@@ -37,10 +37,7 @@ impl Add for Vector {
     type Output = Vector;
 
     fn add(self, other: Vector) -> Vector {
-        if self.len() != other.len() {
-            eprintln!("Warning: Vectors have different lengths");
-            return Vector { elements: vec![] };
-        }
+        assert_eq!(self.len(), other.len());
         let elements = self.elements.into_iter().zip(other.elements.into_iter())
             .map(|(a, b)| a + b)
             .collect();
@@ -52,10 +49,7 @@ impl Sub for Vector {
     type Output = Vector;
 
     fn sub(self, other: Vector) -> Vector {
-        if self.len() != other.len() {
-            eprintln!("Warning: Vectors have different lengths");
-            return Vector { elements: vec![] };
-        }
+        assert_eq!(self.len(), other.len());
         let elements = self.elements.into_iter().zip(other.elements.into_iter())
             .map(|(a, b)| a - b)
             .collect();
@@ -67,10 +61,7 @@ impl Mul for Vector {
     type Output = BigInt;
 
     fn mul(self, other: Vector) -> BigInt {
-        if self.len() != other.len() {
-            eprintln!("Warning: Vectors have different lengths");
-            return BigInt::zero();
-        }
+        assert_eq!(self.len(), other.len());
         self.elements.into_iter().zip(other.elements.into_iter())
             .map(|(a, b)| a * b)
             .fold(BigInt::zero(), |acc, x| acc + x)
@@ -81,10 +72,7 @@ impl Mul<Matrix> for Vector {
     type Output = Vector;
 
     fn mul(self, other: Matrix) -> Vector {
-        if self.len() != other.rows() {
-            eprintln!("Warning: Vector length does not match the number of rows in the matrix");
-            return Vector { elements: vec![] };
-        }
+        assert_eq!(self.len(), other.rows());
         let elements = other.transpose().rows.into_iter()
             .map(|row| self.clone() * row)
             .collect();
@@ -200,13 +188,11 @@ impl Matrix {
         type Output = Matrix;
 
         fn add(self, other: Matrix) -> Matrix {
-        if self.rows() != other.rows() || self.cols() != other.cols() {
-            eprintln!("Warning: Matrices have different dimensions");
-            return Matrix { rows: vec![] };
-        }
-        let rows = self.rows.into_iter().zip(other.rows.into_iter())
-            .map(|(a, b)| a + b)
-            .collect();
+            assert_eq!(self.rows(), other.rows());
+            assert_eq!(self.cols(), other.cols());
+            let rows = self.rows.into_iter().zip(other.rows.into_iter())
+                .map(|(a, b)| a + b)
+                .collect();
         Matrix { rows }
     }
 }
@@ -215,10 +201,8 @@ impl Sub for Matrix {
     type Output = Matrix;
 
     fn sub(self, other: Matrix) -> Matrix {
-        if self.rows() != other.rows() || self.cols() != other.cols() {
-            eprintln!("Warning: Matrices have different dimensions");
-            return Matrix { rows: vec![] };
-        }
+        assert_eq!(self.rows(), other.rows());
+        assert_eq!(self.cols(), other.cols());
         let rows = self.rows.into_iter().zip(other.rows.into_iter())
             .map(|(a, b)| a - b)
             .collect();
@@ -230,10 +214,7 @@ impl Mul for Matrix {
     type Output = Matrix;
 
     fn mul(self, other: Matrix) -> Matrix {
-        if self.cols() != other.rows() {
-            eprintln!("Warning: Matrices have incompatible dimensions for multiplication");
-            return Matrix { rows: vec![] };
-        }
+        assert_eq!(self.cols(), other.rows());
         let mut result_elements = vec![vec![BigInt::zero(); other.cols()]; self.rows()];
         for i in 0..self.rows() {
             for j in 0..other.cols() {
@@ -253,10 +234,7 @@ impl Mul<Vector> for Matrix {
     type Output = Vector;
 
     fn mul(self, other: Vector) -> Vector {
-        if self.cols() != other.len() {
-            eprintln!("Warning: Matrix rows do not match vector length");
-            return Vector { elements: vec![] };
-        }
+        assert_eq!(self.cols(), other.len());
         let elements = self.rows.into_iter()
             .map(|row| row.clone() * other.clone())
             .collect();

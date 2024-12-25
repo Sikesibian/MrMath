@@ -209,15 +209,51 @@ fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExpr, String> {
             _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `/`"))
         },
         (PrimaryExpr::Vector(lhs), PrimaryExpr::Vector(rhs)) => match infix.op {
-            InfixOp::Add => Ok(PrimaryExpr::Vector(lhs + rhs)),
-            InfixOp::Sub => Ok(PrimaryExpr::Vector(lhs - rhs)),
-            InfixOp::Mul => Ok(PrimaryExpr::Integer(lhs * rhs)),
+            InfixOp::Add => {
+            if lhs.len() == rhs.len() {
+                Ok(PrimaryExpr::Vector(lhs + rhs))
+            } else {
+                Err(format!("Invalid operation, vectors must be of the same length"))
+            }
+            }
+            InfixOp::Sub => {
+            if lhs.len() == rhs.len() {
+                Ok(PrimaryExpr::Vector(lhs - rhs))
+            } else {
+                Err(format!("Invalid operation, vectors must be of the same length"))
+            }
+            }
+            InfixOp::Mul => {
+            if lhs.len() == rhs.len() {
+                Ok(PrimaryExpr::Integer(lhs * rhs))
+            } else {
+                Err(format!("Invalid operation, vectors must be of the same length"))
+            }
+            }
             _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`"))
         },
         (PrimaryExpr::Matrix(lhs), PrimaryExpr::Matrix(rhs)) => match infix.op {
-            InfixOp::Add => Ok(PrimaryExpr::Matrix(lhs + rhs)),
-            InfixOp::Sub => Ok(PrimaryExpr::Matrix(lhs - rhs)),
-            InfixOp::Mul => Ok(PrimaryExpr::Matrix(lhs * rhs)),
+            InfixOp::Add => {
+            if lhs.rows() == rhs.rows() && lhs.cols() == rhs.cols() {
+                Ok(PrimaryExpr::Matrix(lhs + rhs))
+            } else {
+                Err(format!("Invalid operation, matrices must be of the same dimensions"))
+            }
+            }
+            InfixOp::Sub => {
+            if lhs.rows() == rhs.rows() && lhs.cols() == rhs.cols() {
+                Ok(PrimaryExpr::Matrix(lhs - rhs))
+            } else {
+                Err(format!("Invalid operation, matrices must be of the same dimensions"))
+            }
+            }
+            InfixOp::Mul => {
+            if lhs.cols() == rhs.rows() {
+                Ok(PrimaryExpr::Matrix(lhs * rhs))
+            } else {
+                Err(format!("Invalid operation, matrix A columns must match matrix B rows"))
+            }
+            }
             _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`"))
         },
         (PrimaryExpr::Integer(lhs), PrimaryExpr::Fraction(rhs)) | (PrimaryExpr::Fraction(rhs), PrimaryExpr::Integer(lhs)) => match infix.op {
@@ -236,11 +272,23 @@ fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExpr, String> {
             _ => Err(format!("Invalid operation, expecting `*`"))
         },
         (PrimaryExpr::Vector(lhs), PrimaryExpr::Matrix(rhs)) => match infix.op {
-            InfixOp::Mul => Ok(PrimaryExpr::Vector(lhs * rhs)),
+            InfixOp::Mul => {
+            if lhs.len() == rhs.rows() {
+                Ok(PrimaryExpr::Vector(lhs * rhs))
+            } else {
+                Err(format!("Invalid operation, vector length must match matrix row count"))
+            }
+            }
             _ => Err(format!("Invalid operation, expecting `*`"))
         },
-        | (PrimaryExpr::Matrix(lhs), PrimaryExpr::Vector(rhs)) => match infix.op {
-            InfixOp::Mul => Ok(PrimaryExpr::Vector(lhs * rhs)),
+        (PrimaryExpr::Matrix(lhs), PrimaryExpr::Vector(rhs)) => match infix.op {
+            InfixOp::Mul => {
+            if lhs.cols() == rhs.len() {
+                Ok(PrimaryExpr::Vector(lhs * rhs))
+            } else {
+                Err(format!("Invalid operation, matrix column count must match vector length"))
+            }
+            }
             _ => Err(format!("Invalid operation, expecting `*`"))
         },
         _ => Err("Invalid operation".to_string())
