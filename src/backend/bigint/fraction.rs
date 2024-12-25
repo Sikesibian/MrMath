@@ -147,6 +147,12 @@ impl Neg for Fraction {
     }
 }
 
+impl From<BigInt> for Fraction {
+    fn from(value: BigInt) -> Self {
+        Fraction::new(value, BigInt::from("1".to_string()))
+    }    
+}
+
 impl Fraction {
     pub fn to_string(&self) -> String {
         format!("Frac[{},{}]", self.numerator.to_string(), self.denominator.to_string())
@@ -154,5 +160,13 @@ impl Fraction {
 
     pub fn abs(&self) -> Fraction {
         Fraction::new(self.numerator.clone().abs(), self.denominator.clone().abs())
+    }
+
+    pub fn zero() -> Fraction {
+        Fraction::new(BigInt::zero(), BigInt::one())
+    }
+
+    pub fn one() -> Fraction {
+        Fraction::new(BigInt::one(), BigInt::one())
     }
 }

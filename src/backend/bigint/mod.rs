@@ -4,6 +4,8 @@ pub mod matrix;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub, Mul, Div, Rem, Neg};
 
+use fraction::Fraction;
+
 const BASE: i64 = 10;
 
 #[derive(Debug, Clone)]
@@ -275,6 +277,14 @@ impl BigInt {
 }
 
 impl BigInt {
+    pub fn fraction(self, other: Self) -> Fraction {
+        if other.digits.is_empty() || other.is_zero() {
+            eprintln!("Warning: Division by zero");
+            return Fraction::zero();
+        }
+        return Fraction::new(self, other);
+    }
+
     pub fn pow(self, exp: u32) -> Self {
         let mut base = self;
         let mut exp = exp;

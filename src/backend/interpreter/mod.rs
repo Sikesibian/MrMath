@@ -1,5 +1,5 @@
 use crate::backend::structure::ast::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::format, result};
 use super::bigint::fraction::Fraction;
 
 struct Env {
@@ -40,52 +40,7 @@ impl Env {
 pub fn interpret(tu: TransUnit) {
     let mut env = Env::new();
     for stmt in tu.block.stmts {
-        match stmt {
-            Stmt::Expr(expr) => {
-                let result = eval_expr(&expr, &mut env);
-                println!("{}", result.to_string());
-            }
-            Stmt::Decl(decl) => {
-                match decl {
-                    Decl::Var(var) => {
-                        let result = eval_expr(&var.expr, &mut env);
-                        env.set(var.name, result);
-                    }
-                    Decl::Const(const_decl) => {
-                        let result = eval_expr(&const_decl.expr, &mut env);
-                        env.set(const_decl.name, result);
-                    }
-                }
-            }
-            Stmt::Assign(assign) => {
-                let result = eval_expr(&assign.rhs, &mut env);
-                env.set(assign.lhs, result);
-            }
-            Stmt::If(if_stmt) => {
-                let cond = eval_expr(&if_stmt.cond, &mut env);
-                if let PrimaryExpr::Boolean(true) = cond {
-                    interpret_block(&if_stmt.then, &mut env);
-                } else if let Some(els) = &if_stmt.els {
-                    interpret_block(els, &mut env);
-                }
-            }
-            Stmt::While(while_stmt) => {
-                while let PrimaryExpr::Boolean(true) = eval_expr(&while_stmt.cond, &mut env) {
-                    interpret_block(&while_stmt.body, &mut env);
-                }
-            }
-            Stmt::For(for_stmt) => {
-                interpret_stmt(&for_stmt.init, &mut env);
-                while let PrimaryExpr::Boolean(true) = eval_expr(&for_stmt.cond, &mut env) {
-                    interpret_block(&for_stmt.body, &mut env);
-                    interpret_stmt(&for_stmt.post, &mut env);
-                }
-            }
-            Stmt::Return(return_stmt) => {
-                let result = eval_expr(&return_stmt.expr, &mut env);
-                println!("Return: {:?}", result);
-            }
-        }
+        interpret_stmt(&stmt, &mut env);
     }
 }
 
@@ -98,27 +53,57 @@ fn interpret_block(block: &Block, env: &mut Env) {
 fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
     match stmt {
         Stmt::Expr(expr) => {
-            let result = eval_expr(expr, env);
-            println!("{:?}", result);
+            let result = match eval_expr(&expr, env) {
+                Ok(result) => result,
+                Err(err) => {
+                    println!("Error: {}", err);
+                    return;
+                }
+            };
+            println!("{}", result.to_string());
         }
         Stmt::Decl(decl) => {
             match decl {
                 Decl::Var(var) => {
-                    let result = eval_expr(&var.expr, env);
+                    let result = match eval_expr(&var.expr, env) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            println!("Error: {}", err);
+                            return;
+                        }
+                    };
                     env.set(var.name.clone(), result);
                 }
                 Decl::Const(const_decl) => {
-                    let result = eval_expr(&const_decl.expr, env);
+                    let result = match eval_expr(&const_decl.expr, env) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            println!("Error: {}", err);
+                            return;
+                        }
+                    };
                     env.set(const_decl.name.clone(), result);
                 }
             }
         }
         Stmt::Assign(assign) => {
-            let result = eval_expr(&assign.rhs, env);
+            let result = match eval_expr(&assign.rhs, env) {
+                Ok(result) => result,
+                Err(err) => {
+                    println!("Error: {}", err);
+                    return;
+                }
+            };
             env.set(assign.lhs.clone(), result);
         }
         Stmt::If(if_stmt) => {
-            let cond = eval_expr(&if_stmt.cond, env);
+            let cond = match eval_expr(&if_stmt.cond, env) {
+                Ok(cond) => cond,
+                Err(err) => {
+                    println!("Error: {}", err);
+                    return;
+                }
+            };
             if let PrimaryExpr::Boolean(true) = cond {
                 interpret_block(&if_stmt.then, env);
             } else if let Some(els) = &if_stmt.els {
@@ -126,13 +111,13 @@ fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
             }
         }
         Stmt::While(while_stmt) => {
-            while let PrimaryExpr::Boolean(true) = eval_expr(&while_stmt.cond, env) {
+            while let Ok(PrimaryExpr::Boolean(true)) = eval_expr(&while_stmt.cond, env) {
                 interpret_block(&while_stmt.body, env);
             }
         }
         Stmt::For(for_stmt) => {
             interpret_stmt(&for_stmt.init, env);
-            while let PrimaryExpr::Boolean(true) = eval_expr(&for_stmt.cond, env) {
+            while let Ok(PrimaryExpr::Boolean(true)) = eval_expr(&for_stmt.cond, env) {
                 interpret_block(&for_stmt.body, env);
                 interpret_stmt(&for_stmt.post, env);
             }
@@ -144,7 +129,7 @@ fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
     }
 }
 
-fn eval_expr(expr: &Expr, env: &mut Env) -> PrimaryExpr {
+fn eval_expr(expr: &Expr, env: &mut Env) -> Result<PrimaryExpr, String> {
     match expr {
         Expr::Primary(primary) => eval_primary(primary, env),
         Expr::Prefix(prefix) => eval_prefix(prefix, env),
@@ -154,38 +139,17 @@ fn eval_expr(expr: &Expr, env: &mut Env) -> PrimaryExpr {
 }
 
 fn eval_expr_short(expr: &Expr_short, env: &mut Env) -> PrimaryExpr_short {
-    match expr {
-        Expr_short::PrimaryShort(primaryshort) => eval_primary_short(primaryshort, env),
-        Expr_short::Prefix(prefix) => 
-            match eval_expr(&prefix.expr, env) {
-                PrimaryExpr::Ident(var) => PrimaryExpr_short::Ident(var.clone()),
-                PrimaryExpr::Integer(int) => PrimaryExpr_short::Integer(int),
-                PrimaryExpr::Fraction(frac) => PrimaryExpr_short::Fraction(frac),
-                _ => panic!("Prefix operator not supported"),
-            },
-        Expr_short::Infix(infix) => match eval_infix(infix, env) {
-            PrimaryExpr::Ident(var) => PrimaryExpr_short::Ident(var.clone()),
-            PrimaryExpr::Integer(int) => PrimaryExpr_short::Integer(int),
-            PrimaryExpr::Fraction(frac) => PrimaryExpr_short::Fraction(frac),
-            _ => panic!("Infix operator not supported"),
-        },
-        Expr_short::Postfix(postfix) => match eval_postfix(postfix, env) {
-            PrimaryExpr::Ident(var) => PrimaryExpr_short::Ident(var.clone()),
-            PrimaryExpr::Integer(int) => PrimaryExpr_short::Integer(int),
-            PrimaryExpr::Fraction(frac) => PrimaryExpr_short::Fraction(frac),
-            _ => panic!("Postfix operator not supported"),
-       },
-    }
+    todo!("Not implemented");
 }
 
-fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> PrimaryExpr {
+fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> Result<PrimaryExpr, String> {
     match primary {
-        PrimaryExpr::Integer(int) => PrimaryExpr::Integer(int.clone()),
-        PrimaryExpr::Fraction(frac) => PrimaryExpr::Fraction(frac.clone()),
-        PrimaryExpr::Vector(vec) => PrimaryExpr::Vector(vec.clone()),
-        PrimaryExpr::Matrix(mat) => PrimaryExpr::Matrix(mat.clone()),
+        PrimaryExpr::Integer(int) => Ok(PrimaryExpr::Integer(int.clone())),
+        PrimaryExpr::Fraction(frac) => Ok(PrimaryExpr::Fraction(frac.clone())),
+        PrimaryExpr::Vector(vec) => Ok(PrimaryExpr::Vector(vec.clone())),
+        PrimaryExpr::Matrix(mat) => Ok(PrimaryExpr::Matrix(mat.clone())),
         PrimaryExpr::Expr(expr) => eval_expr(expr, env),
-        PrimaryExpr::Boolean(bool) => PrimaryExpr::Boolean(*bool),
+        PrimaryExpr::Boolean(bool) => Ok(PrimaryExpr::Boolean(*bool)),
         PrimaryExpr::Ident(ident) => todo!("Not implemented")
         }
     }
@@ -194,91 +158,105 @@ fn eval_primary_short(primaryshort: &PrimaryExpr_short, env: &mut Env) -> Primar
     todo!("Not implemented")
 }
 
-fn eval_prefix(prefix: &PrefixExpr, env: &mut Env) -> PrimaryExpr {
-    let expr = eval_expr(&prefix.expr, env);
+fn eval_prefix(prefix: &PrefixExpr, env: &mut Env) -> Result<PrimaryExpr, String> {
+    let expr = match eval_expr(&prefix.expr, env) {
+        Ok(expr) => expr,
+        Err(err) => return Err(err),
+    };
     match prefix.op {
         PrefixOp::Neg => match expr {
-            PrimaryExpr::Integer(int) => PrimaryExpr::Integer(-int),
-            PrimaryExpr::Fraction(frac) => PrimaryExpr::Fraction(-frac),
-            _ => panic!("Invalid operation"),
+            PrimaryExpr::Integer(int) => Ok(PrimaryExpr::Integer(-int)),
+            PrimaryExpr::Fraction(frac) => Ok(PrimaryExpr::Fraction(-frac)),
+            _ => Err("Invalid operation".to_string())
         }
         PrefixOp::Pos => match expr {
-            PrimaryExpr::Integer(int) => PrimaryExpr::Integer(int),
-            PrimaryExpr::Fraction(frac) => PrimaryExpr::Fraction(frac),
-            _ => panic!("Invalid operation"),
+            PrimaryExpr::Integer(int) => Ok(PrimaryExpr::Integer(int)),
+            PrimaryExpr::Fraction(frac) => Ok(PrimaryExpr::Fraction(frac)),
+            _ => Err("Invalid operation".to_string())
         }
         PrefixOp::Abs => match expr {
-            PrimaryExpr::Integer(int) => PrimaryExpr::Integer(int.abs()),
-            PrimaryExpr::Fraction(frac) => PrimaryExpr::Fraction(frac.abs()),
-            _ => panic!("Invalid operation"),
+            PrimaryExpr::Integer(int) => Ok(PrimaryExpr::Integer(int.abs())),
+            PrimaryExpr::Fraction(frac) => Ok(PrimaryExpr::Fraction(frac.abs())),
+            _ => Err("Invalid operation".to_string())
         }
     }
 }
 
-fn eval_infix(infix: &InfixExpr, env: &mut Env) -> PrimaryExpr {
-    let lhs = eval_expr(&infix.lhs, env);
-    let rhs = eval_expr(&infix.rhs, env);
+fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExpr, String> {
+    let lhs = match eval_expr(&infix.lhs, env) {
+        Ok(lhs) => lhs,
+        Err(err) => return Err(err),
+    };
+    let rhs = match eval_expr(&infix.rhs, env) {
+        Ok(rhs) => rhs,
+        Err(err) => return Err(err),
+    };
     match (lhs, rhs) {
         (PrimaryExpr::Integer(lhs), PrimaryExpr::Integer(rhs)) => match infix.op {
-            InfixOp::Add => PrimaryExpr::Integer(lhs + rhs),
-            InfixOp::Sub => PrimaryExpr::Integer(lhs - rhs),
-            InfixOp::Mul => PrimaryExpr::Integer(lhs * rhs),
-            InfixOp::Div0 => PrimaryExpr::Integer(lhs / rhs),
-            InfixOp::Mod => PrimaryExpr::Integer(lhs % rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Add => Ok(PrimaryExpr::Integer(lhs + rhs)),
+            InfixOp::Sub => Ok(PrimaryExpr::Integer(lhs - rhs)),
+            InfixOp::Mul => Ok(PrimaryExpr::Integer(lhs * rhs)),
+            InfixOp::Div0 => Ok(PrimaryExpr::Integer(lhs / rhs)),
+            InfixOp::Div1 => Ok(PrimaryExpr::Fraction(lhs.fraction(rhs))),
+            InfixOp::Mod => Ok(PrimaryExpr::Integer(lhs % rhs)),
+            _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `/`, `//`, `%`"))
         },
         (PrimaryExpr::Fraction(lhs), PrimaryExpr::Fraction(rhs)) => match infix.op {
-            InfixOp::Add => PrimaryExpr::Fraction(lhs + rhs),
-            InfixOp::Sub => PrimaryExpr::Fraction(lhs - rhs),
-            InfixOp::Mul => PrimaryExpr::Fraction(lhs * rhs),
-            InfixOp::Div0 => PrimaryExpr::Fraction(lhs / rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Add => Ok(PrimaryExpr::Fraction(lhs + rhs)),
+            InfixOp::Sub => Ok(PrimaryExpr::Fraction(lhs - rhs)),
+            InfixOp::Mul => Ok(PrimaryExpr::Fraction(lhs * rhs)),
+            InfixOp::Div1 => Ok(PrimaryExpr::Fraction(lhs / rhs)),
+            _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `/`"))
         },
         (PrimaryExpr::Vector(lhs), PrimaryExpr::Vector(rhs)) => match infix.op {
-            InfixOp::Add => PrimaryExpr::Vector(lhs + rhs),
-            InfixOp::Sub => PrimaryExpr::Vector(lhs - rhs),
-            InfixOp::Mul => PrimaryExpr::Integer(lhs * rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Add => Ok(PrimaryExpr::Vector(lhs + rhs)),
+            InfixOp::Sub => Ok(PrimaryExpr::Vector(lhs - rhs)),
+            InfixOp::Mul => Ok(PrimaryExpr::Integer(lhs * rhs)),
+            _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`"))
         },
         (PrimaryExpr::Matrix(lhs), PrimaryExpr::Matrix(rhs)) => match infix.op {
-            InfixOp::Add => PrimaryExpr::Matrix(lhs + rhs),
-            InfixOp::Sub => PrimaryExpr::Matrix(lhs - rhs),
-            InfixOp::Mul => PrimaryExpr::Matrix(lhs * rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Add => Ok(PrimaryExpr::Matrix(lhs + rhs)),
+            InfixOp::Sub => Ok(PrimaryExpr::Matrix(lhs - rhs)),
+            InfixOp::Mul => Ok(PrimaryExpr::Matrix(lhs * rhs)),
+            _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`"))
         },
         (PrimaryExpr::Integer(lhs), PrimaryExpr::Fraction(rhs)) | (PrimaryExpr::Fraction(rhs), PrimaryExpr::Integer(lhs)) => match infix.op {
-            InfixOp::Add => PrimaryExpr::Fraction(lhs + rhs),
-            InfixOp::Sub => PrimaryExpr::Fraction(lhs - rhs),
-            InfixOp::Mul => PrimaryExpr::Fraction(lhs * rhs),
-            InfixOp::Div0 => PrimaryExpr::Fraction(lhs / rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Add => Ok(PrimaryExpr::Fraction(lhs + rhs)),
+            InfixOp::Sub => Ok(PrimaryExpr::Fraction(lhs - rhs)),
+            InfixOp::Mul => Ok(PrimaryExpr::Fraction(lhs * rhs)),
+            InfixOp::Div0 => Ok(PrimaryExpr::Fraction(lhs / rhs)),
+            _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `//`"))
         },
         (PrimaryExpr::Integer(lhs), PrimaryExpr::Vector(rhs)) | (PrimaryExpr::Vector(rhs), PrimaryExpr::Integer(lhs)) => match infix.op {
-            InfixOp::Mul => PrimaryExpr::Vector(lhs * rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Mul => Ok(PrimaryExpr::Vector(lhs * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
         },
         (PrimaryExpr::Integer(lhs), PrimaryExpr::Matrix(rhs)) | (PrimaryExpr::Matrix(rhs), PrimaryExpr::Integer(lhs)) => match infix.op {
-            InfixOp::Mul => PrimaryExpr::Matrix(lhs * rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Mul => Ok(PrimaryExpr::Matrix(lhs * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
         },
         (PrimaryExpr::Vector(lhs), PrimaryExpr::Matrix(rhs)) => match infix.op {
-            InfixOp::Mul => PrimaryExpr::Vector(lhs * rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Mul => Ok(PrimaryExpr::Vector(lhs * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
         },
         | (PrimaryExpr::Matrix(lhs), PrimaryExpr::Vector(rhs)) => match infix.op {
-            InfixOp::Mul => PrimaryExpr::Vector(lhs * rhs),
-            _ => panic!("Invalid operation"),
+            InfixOp::Mul => Ok(PrimaryExpr::Vector(lhs * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
         },
-        _ => panic!("Invalid operation"),
+        _ => Err("Invalid operation".to_string())
     }
 }
 
-fn eval_postfix(postfix: &PostfixExpr, env: &mut Env) -> PrimaryExpr {
+fn eval_postfix(postfix: &PostfixExpr, env: &mut Env) -> Result<PrimaryExpr, String> {
     let expr = eval_expr(&postfix.expr, env);
+    let expr = match expr {
+        Ok(expr) => expr,
+        Err(err) => return Err(err),
+    };
     match (expr, &postfix.op) {
-        (PrimaryExpr::Integer(int), PostfixOp::Factorial) => PrimaryExpr::Integer(int.factorial()),
-        (PrimaryExpr::Matrix(mat), PostfixOp::Transpose) => PrimaryExpr::Matrix(mat.transpose()),
-        _ => panic!("Invalid operation"),
+        (PrimaryExpr::Integer(int), PostfixOp::Factorial) => Ok(PrimaryExpr::Integer(int.factorial())),
+        (PrimaryExpr::Matrix(mat), PostfixOp::Transpose) => Ok(PrimaryExpr::Matrix(mat.transpose())),
+        _ => Err(format!("Invalid operation, expecting `!` for Int, `^T` for Mat"))
     }
 }
 
@@ -307,7 +285,7 @@ mod tests {
     fn test_eval_expr_integer() {
         let mut env = Env::new();
         let expr = Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("42".to_string()))));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(BigInt::from("42".to_string())));
     }
 
     #[test]
@@ -318,7 +296,7 @@ mod tests {
                     rhs: Box::new(Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string()))))),
                     op: InfixOp::Add,
                 }));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(BigInt::from("42".to_string())));
     }
 
     #[test]
@@ -329,7 +307,7 @@ mod tests {
             rhs: Box::new(Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string()))))),
             op: InfixOp::Sub,
         }));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(BigInt::from("42".to_string())));
     }
 
     #[test]
@@ -340,7 +318,7 @@ mod tests {
             rhs: Box::new(Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string()))))),
             op: InfixOp::Mul,
         }));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(BigInt::from("42".to_string())));
     }
 
     #[test]
@@ -351,14 +329,14 @@ mod tests {
             rhs: Box::new(Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string()))))),
             op: InfixOp::Div0,
         }));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(BigInt::from("42".to_string())));
     }
 
     #[test]
     fn test_eval_expr_boolean() {
         let mut env = Env::new();
         let expr = Expr::Primary(Box::new(PrimaryExpr::Boolean(true)));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Boolean(true));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Boolean(true));
     }
 
     #[test]
@@ -368,7 +346,7 @@ mod tests {
             expr: Box::new(Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("42".to_string()))))),
             op: PrefixOp::Neg,
         }));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(-BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(-BigInt::from("42".to_string())));
     }
 
     #[test]
@@ -378,6 +356,6 @@ mod tests {
             expr: Box::new(Expr::Primary(Box::new(PrimaryExpr::Integer(-BigInt::from("42".to_string()))))),
             op: PrefixOp::Abs,
         }));
-        assert_eq!(eval_expr(&expr, &mut env), PrimaryExpr::Integer(BigInt::from("42".to_string())));
+        assert_eq!(eval_expr(&expr, &mut env).unwrap(), PrimaryExpr::Integer(BigInt::from("42".to_string())));
     }
 }
