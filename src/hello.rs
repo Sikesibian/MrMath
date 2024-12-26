@@ -1,6 +1,6 @@
 use ansi_term::Colour::{Yellow, Green};
 
-const VERSION: &str = "v0.0.1";
+const VERSION: &str = "v0.1.1";
 
 pub fn intro_info() {
     // print the ascii art

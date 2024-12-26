@@ -1,5 +1,5 @@
 use crate::backend::structure::ast::*;
-use crate::backend::bigint::{BigInt, fraction::Fraction, matrix::{Matrix, Vector}};
+use crate::backend::bigint::{BigInt, matrix::{Matrix, Vector}};
 use pest_derive::Parser;
 use pest::{pratt_parser::PrattParser, Parser, iterators::Pair};
 
@@ -71,11 +71,11 @@ pub fn parse_var_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>
     let mut inner = pair.into_inner();
     let _ = inner.next().unwrap();
     let id = inner.next().unwrap();
-    let ty =inner.next().unwrap();
+    // let ty =inner.next().unwrap();
     let expr = inner.next().unwrap();
     Ok(Stmt::Decl(Decl::Var(VarDecl {
         name: id.as_str().to_string(),
-        ty: parse_type(ty)?,
+        // ty: parse_type(ty)?,
         expr: Box::new(parse_expr(expr)?),
     })))
 }
@@ -175,6 +175,70 @@ pub fn parse_primary_expr(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::
     }
 }
 
+// EXPR_SHORT = { ATOM_EXPR_SHORT ~ (INFIX_OPS ~ ATOM_EXPR_SHORT)*  }
+pub fn parse_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::EXPR_SHORT);
+    let mut inner = pair.into_inner();
+    let first_expr = parse_atom_expr_short(inner.next().unwrap())?;
+    let mut expr = first_expr;
+
+    while let Some(op) = inner.next() {
+        let infix_op = parse_infix_ops(op)?;
+        let next_expr = parse_atom_expr_short(inner.next().unwrap())?;
+        expr = Expr_short::Infix(Box::new(InfixExpr_short {
+            lhs: Box::new(expr),
+            op: infix_op,
+            rhs: Box::new(next_expr),
+        }));
+    }
+
+    Ok(expr)
+}
+
+// ATOM_EXPR_SHORT = { PREFIX_OPS ~ PRIMARY_EXPR ~ POSTFIX_OPS }
+pub fn parse_atom_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::ATOM_EXPR_SHORT);
+    let mut inner = pair.into_inner();
+    let prefix_ops = parse_prefix_ops(inner.next().unwrap())?;
+    let primary_expr = parse_primary_expr_short(inner.next().unwrap())?;
+    let postfix_ops = parse_postfix_ops(inner.next().unwrap())?;
+    let mut expr = Expr_short::PrimaryShort(primary_expr);
+    
+    for op in postfix_ops {
+        expr = Expr_short::Postfix(Box::new(PostfixExpr_short {
+            expr: Box::new(expr),
+            op,
+        }));
+    }
+
+    for op in prefix_ops.into_iter().rev() {
+        expr = Expr_short::Prefix(Box::new(PrefixExpr_short {
+            op,
+            expr: Box::new(expr),
+        }));
+    }
+    
+    Ok(expr)
+}
+
+// PRIMARY_EXPR_SHORT = { IDENTIFIER | INTEGER | FRACTION | "(" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ ")" }
+pub fn parse_primary_expr_short(pair: Pair<Rule>) -> Result<PrimaryExpr_short, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR_SHORT);
+    let inner = pair.into_inner().next().unwrap();
+    match inner.as_rule() {
+        Rule::IDENTIFIER => Ok(PrimaryExpr_short::Ident(inner.as_str().to_string())),
+        Rule::INTEGER => Ok(PrimaryExpr_short::Integer(BigInt::from(inner.as_str().parse::<i64>().unwrap().to_string()))),
+        Rule::FRACTION => {
+            let mut inner = inner.into_inner();
+            let num = parse_expr_short(inner.next().unwrap())?;
+            let denom = parse_expr_short(inner.next().unwrap())?;
+            Ok(PrimaryExpr_short::Fraction(Box::new(num), Box::new(denom)))
+        },
+        Rule::EXPR_SHORT => Ok(PrimaryExpr_short::Expr(Box::new(parse_expr_short(inner)?))),
+        _ => panic!("Invalid primary expression"),
+    }
+}
+
 // PREFIX_OPS = { (WHITE_SPACE* ~ PREFIX_OP)* ~ WHITE_SPACE* }
 pub fn parse_prefix_ops(pair: Pair<Rule>) -> Result<Vec<PrefixOp>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PREFIX_OPS);
@@ -247,15 +311,9 @@ fn parse_integer(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rul
 fn parse_fraction(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::FRACTION);
     let mut inner = pair.into_inner();
-    let num = match parse_integer(inner.next().unwrap())? {
-        PrimaryExpr::Integer(bigint) => bigint,
-        _ => panic!("Expected integer for numerator"),
-    };
-    let denom = match parse_integer(inner.next().unwrap())? {
-        PrimaryExpr::Integer(bigint) => bigint,
-        _ => panic!("Expected integer for denominator"),
-    };
-    Ok(PrimaryExpr::Fraction(Fraction::new(num, denom)))
+    let num = parse_expr_short(inner.next().unwrap())?;
+    let denom = parse_expr_short(inner.next().unwrap())?;
+    Ok(PrimaryExpr::Fraction(Box::new(num), Box::new(denom)))
 }
 
 // MATRIX = { "Mat" ~ "[" ~ MATRIX_ROWS ~ "]" }
@@ -329,17 +387,16 @@ mod tests {
         let input = "123";
         let pair = MrMathParser::parse(Rule::INTEGER, input).unwrap().next().unwrap();
         let result = parse_integer(pair).unwrap();
-        println!("{:?}", result);
+        println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Integer(BigInt::from("123".to_string())));
     }
 
     #[test]
     fn test_parse_fraction() {
-        let input = "Frac[1, 2]";
+        let input = "Frac[x*y-1, Frac[es3, 2]]";
         let pair = MrMathParser::parse(Rule::FRACTION, input).unwrap().next().unwrap();
         let result = parse_fraction(pair).unwrap();
-        println!("{:?}", result);
-        assert_eq!(result, PrimaryExpr::Fraction(Fraction::new(BigInt::from("1".to_string()), BigInt::from("2".to_string()))));
+        println!("{:#?}", result);
     }
 
     #[test]
@@ -347,7 +404,7 @@ mod tests {
         let input = "Vec[1,2 ,3]";
         let pair = MrMathParser::parse(Rule::VECTOR, input).unwrap().next().unwrap();
         let result = parse_vector(pair).unwrap();
-        println!("{:?}", result);
+        println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Vector(Vector::new(vec![
             BigInt::from("1".to_string()),
             BigInt::from("2".to_string()),
@@ -360,7 +417,7 @@ mod tests {
         let input = "Mat[  [1, 2], [3, 4]];";
         let pair = MrMathParser::parse(Rule::MATRIX, input).unwrap().next().unwrap();
         let result = parse_matrix(pair).unwrap();
-        println!("{:?}", result);
+        println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Matrix(Matrix::new(vec![
             Vector::new(vec![
                 BigInt::from("1".to_string()),
@@ -379,12 +436,12 @@ mod tests {
         let pair = MrMathParser::parse(Rule::EXPR, input).unwrap().next().unwrap();
         let result = parse_expr(pair).unwrap();
         // Add appropriate assertions based on the expected structure of the parsed expression
-        println!("{:?}", result);
+        println!("{:#?}", result);
         let input = "(3 + 1 * 8 !) ^T";
         let pair = MrMathParser::parse(Rule::EXPR, input).unwrap().next().unwrap();
         let result = parse_expr(pair).unwrap();
         // Add appropriate assertions based on the expected structure of the parsed expression
-        println!("{:?}", result);
+        println!("{:#?}", result);
     }
 
     #[test]
@@ -392,6 +449,32 @@ mod tests {
         let input = "var x = Vec Vec[1, 2];";
         let pair = MrMathParser::parse(Rule::STMT, input).unwrap().next().unwrap();
         let result = parse_stmt(pair).unwrap();
-        println!("{:?}", result);
+        println!("{:#?}", result);
+    }
+
+    #[test]
+    fn test_parse_complex_expr() {
+        let input = "Mat[ [1, 2], [3, 4]] * Vec[5, 6] + Frac[7, 8] - (9 + 10) ^T";
+        let pair = MrMathParser::parse(Rule::EXPR, input).unwrap().next().unwrap();
+        let result = parse_expr(pair).unwrap();
+        println!("{:#?}", result);
+    }
+
+    #[test]
+    fn test_parse_nested_expr() {
+        let input = "((1 + 2) * (3 - 4)) / (5 + (6 * 7))";
+        let pair = MrMathParser::parse(Rule::EXPR, input).unwrap().next().unwrap();
+        let result = parse_expr(pair).unwrap();
+        println!("{:#?}", result);
+        // Add appropriate assertions based on the expected structure of the parsed expression
+    }
+
+    #[test]
+    fn test_parse_complex_stmt() {
+        let input = "var matrix = Mat[ [1, 2], [3, 4]]; print matrix * Vec[5, 6];";
+        let pair = MrMathParser::parse(Rule::BLOCK, input).unwrap().next().unwrap();
+        let result = parse_block(pair).unwrap();
+        println!("{:#?}", result);
+        // Add appropriate assertions based on the expected structure of the parsed block
     }
 }

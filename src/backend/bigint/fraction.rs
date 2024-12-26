@@ -27,6 +27,14 @@ impl Fraction {
         let gcd = self.numerator.gcd(&self.denominator);
         self.numerator = self.numerator / gcd.clone();
         self.denominator = self.denominator / gcd;
+        if self.numerator.sign == self.denominator.sign {
+            self.numerator = self.numerator.abs();
+            self.denominator = self.denominator.abs();
+        }
+        else {
+            self.denominator = self.denominator.abs();
+            self.numerator = -self.numerator.abs();
+        }
         self
     }
 }
@@ -155,7 +163,12 @@ impl From<BigInt> for Fraction {
 
 impl Fraction {
     pub fn to_string(&self) -> String {
-        format!("Frac[{},{}]", self.numerator.to_string(), self.denominator.to_string())
+        if self.numerator.sign {
+            format!("-Frac[{},{}]", self.numerator.clone().abs().to_string(), self.denominator.to_string())
+        }
+        else {
+            format!("Frac[{},{}]", self.numerator.to_string(), self.denominator.to_string())
+        }
     }
 
     pub fn abs(&self) -> Fraction {
