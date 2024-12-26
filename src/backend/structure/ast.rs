@@ -68,8 +68,8 @@ pub enum PrimaryExpr {
     Ident(String),
     Integer(BigInt),
     Fraction(Box<Expr_short>, Box<Expr_short>),
-    Vector(Vector),
-    Matrix(Matrix),
+    Vector(Vec<Expr_short>),
+    Matrix(Vec<Vec<Expr_short>>),
     Expr(Box<Expr>),
     Boolean(bool),
 }

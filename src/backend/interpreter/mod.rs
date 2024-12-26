@@ -1,7 +1,12 @@
 use crate::backend::structure::ast::*;
 use std::{collections::HashMap, fmt::format, ops::Index, result};
 use ansi_term::Colour::Red;
-use super::bigint::fraction::Fraction;
+use super::bigint::{
+    fraction::Fraction,
+    matrix::{
+        VectorElement, IntoVectorElement, Vector, Matrix,
+    }
+};
 
 #[derive(Debug, Clone)]
 pub struct Env {
@@ -175,16 +180,8 @@ fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> Result<PrimaryExprReduc
         },
         PrimaryExpr::Integer(int) => Ok(PrimaryExprReduced::Integer(int.clone())),
         PrimaryExpr::Fraction(num, denom) => {
-            let num_clone = match eval_expr_short(num, env) {
-                Ok(value) => value.clone(),
-                Err(value) => return Err(value),
-            };
-            let denom_clone = match eval_expr_short(denom, env) {
-                Ok(value) => value.clone(),
-                Err(value) => return Err(value),
-            };
-            // println!("eval_primary: Fraction: num: {:?}", num);
-            // println!("eval_primary: Fraction: denom: {:?}", denom);
+            let num_clone = eval_expr_short(num, env)?;
+            let denom_clone = eval_expr_short(denom, env)?;
             return match (num_clone, denom_clone) {
                 (PrimaryExprReduced_short::Integer(num), PrimaryExprReduced_short::Integer(denom)) => 
                     Ok(PrimaryExprReduced::Fraction(num.fraction(denom))),
@@ -197,8 +194,62 @@ fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> Result<PrimaryExprReduc
                 _ => return Err(format!("Invalid fraction: {:?}/{:?}", num, denom)),
             };
         },
-        PrimaryExpr::Vector(vec) => Ok(PrimaryExprReduced::Vector(vec.clone())),
-        PrimaryExpr::Matrix(mat) => Ok(PrimaryExprReduced::Matrix(mat.clone())),
+        PrimaryExpr::Vector(vec) => {
+            let mut evaluated_vec = vec![];
+            for elem in vec.iter() {
+                let evaluated_elem = eval_expr_short(elem, env)?;
+                match evaluated_elem {
+                    PrimaryExprReduced_short::Ident(s) => {
+                        match env.get(&s) {
+                            Some(PrimaryExprReduced::Integer(int)) => {
+                                evaluated_vec.push(int.clone().into_vector_element());
+                            },
+                            Some(PrimaryExprReduced::Fraction(vec)) => {
+                                evaluated_vec.push(vec.clone().into_vector_element());
+                            },
+                            _ => return Err(format!("Invalid expression, expected integer or fraction."))
+                        }
+                    },
+                    PrimaryExprReduced_short::Integer(i) => {
+                        evaluated_vec.push(i.into_vector_element());
+                    }
+                    PrimaryExprReduced_short::Fraction(f) => {
+                        evaluated_vec.push(f.into_vector_element());
+                    }
+                }
+            }
+            Ok(PrimaryExprReduced::Vector(Vector::from(evaluated_vec)))
+        },
+        PrimaryExpr::Matrix(mat) => {
+            let mut evaluated_vec = Vec::new();
+            for row in mat.iter() {
+                let mut row_vec = Vec::new();
+                for elem in row.iter() {
+                    let evaluated_elem = eval_expr_short(elem, env)?;
+                    match evaluated_elem {
+                        PrimaryExprReduced_short::Ident(s) => {
+                            match env.get(&s) {
+                                Some(PrimaryExprReduced::Integer(int)) => {
+                                    row_vec.push(int.clone().into_vector_element());
+                                },
+                                Some(PrimaryExprReduced::Fraction(vec)) => {
+                                    row_vec.push(vec.clone().into_vector_element());
+                                },
+                                _ => return Err(format!("Invalid expression, expected integer or fraction."))
+                            }
+                        },
+                        PrimaryExprReduced_short::Integer(i) => {
+                            row_vec.push(i.into_vector_element());
+                        }
+                        PrimaryExprReduced_short::Fraction(f) => {
+                            row_vec.push(f.into_vector_element());
+                        }
+                    }
+                }
+                evaluated_vec.push(row_vec);
+            }
+            Ok(PrimaryExprReduced::Matrix(Matrix::from(evaluated_vec)))
+        },
         PrimaryExpr::Expr(expr) => eval_expr(expr, env),
         PrimaryExpr::Boolean(bool) => Ok(PrimaryExprReduced::Boolean(*bool)),
         }
@@ -416,7 +467,11 @@ fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExprReduced, St
             }
             InfixOp::Mul => {
             if lhs.len() == rhs.len() {
-                Ok(PrimaryExprReduced::Integer(lhs * rhs))
+                match lhs * rhs {
+                    VectorElement::BigInt(res) => Ok(PrimaryExprReduced::Integer(res)),
+                    VectorElement::Fraction(res) => Ok(PrimaryExprReduced::Fraction(res)),
+                    _ => Err(format!("Invalid operation, vectors must be of the same length"))
+                }
             } else {
                 Err(format!("Invalid operation, vectors must be of the same length"))
             }
@@ -447,19 +502,54 @@ fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExprReduced, St
             }
             _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`"))
         },
-        (PrimaryExprReduced::Integer(lhs), PrimaryExprReduced::Fraction(rhs)) | (PrimaryExprReduced::Fraction(rhs), PrimaryExprReduced::Integer(lhs)) => match infix.op {
+        (PrimaryExprReduced::Integer(lhs), PrimaryExprReduced::Fraction(rhs)) => match infix.op {
             InfixOp::Add => Ok(PrimaryExprReduced::Fraction(lhs + rhs)),
             InfixOp::Sub => Ok(PrimaryExprReduced::Fraction(lhs - rhs)),
             InfixOp::Mul => Ok(PrimaryExprReduced::Fraction(lhs * rhs)),
             InfixOp::Div1 => Ok(PrimaryExprReduced::Fraction(lhs / rhs)),
             _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `/`"))
         },
-        (PrimaryExprReduced::Integer(lhs), PrimaryExprReduced::Vector(rhs)) | (PrimaryExprReduced::Vector(rhs), PrimaryExprReduced::Integer(lhs)) => match infix.op {
-            InfixOp::Mul => Ok(PrimaryExprReduced::Vector(lhs * rhs)),
+        (PrimaryExprReduced::Fraction(lhs), PrimaryExprReduced::Integer(rhs)) => match infix.op {
+            InfixOp::Add => Ok(PrimaryExprReduced::Fraction(lhs + rhs)),
+            InfixOp::Sub => Ok(PrimaryExprReduced::Fraction(lhs - rhs)),
+            InfixOp::Mul => Ok(PrimaryExprReduced::Fraction(lhs * rhs)),
+            InfixOp::Div1 => Ok(PrimaryExprReduced::Fraction(lhs / rhs)),
+            _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `/`"))
+        },
+        (PrimaryExprReduced::Integer(lhs), PrimaryExprReduced::Vector(rhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Vector(VectorElement::BigInt(lhs) * rhs)),
             _ => Err(format!("Invalid operation, expecting `*`"))
         },
-        (PrimaryExprReduced::Integer(lhs), PrimaryExprReduced::Matrix(rhs)) | (PrimaryExprReduced::Matrix(rhs), PrimaryExprReduced::Integer(lhs)) => match infix.op {
-            InfixOp::Mul => Ok(PrimaryExprReduced::Matrix(lhs * rhs)),
+        (PrimaryExprReduced::Vector(rhs), PrimaryExprReduced::Integer(lhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Vector(VectorElement::BigInt(lhs) * rhs)),
+            InfixOp::Div1 => Ok(PrimaryExprReduced::Vector(rhs / VectorElement::BigInt(lhs))),
+            _ => Err(format!("Invalid operation, expecting `*`"))
+        },
+        (PrimaryExprReduced::Integer(lhs), PrimaryExprReduced::Matrix(rhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Matrix(VectorElement::BigInt(lhs) * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
+        },
+        (PrimaryExprReduced::Matrix(rhs), PrimaryExprReduced::Integer(lhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Matrix(VectorElement::BigInt(lhs) * rhs)),
+            InfixOp::Div1 => Ok(PrimaryExprReduced::Matrix(rhs / VectorElement::BigInt(lhs))),
+            _ => Err(format!("Invalid operation, expecting `*`"))
+        },
+        (PrimaryExprReduced::Fraction(lhs), PrimaryExprReduced::Vector(rhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Vector(VectorElement::Fraction(lhs) * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
+        }, 
+        (PrimaryExprReduced::Vector(rhs), PrimaryExprReduced::Fraction(lhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Vector(VectorElement::Fraction(lhs) * rhs)),
+            InfixOp::Div1 => Ok(PrimaryExprReduced::Vector(rhs / VectorElement::Fraction(lhs))),
+            _ => Err(format!("Invalid operation, expecting `*`"))
+        },
+        (PrimaryExprReduced::Fraction(lhs), PrimaryExprReduced::Matrix(rhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Matrix(VectorElement::Fraction(lhs) * rhs)),
+            _ => Err(format!("Invalid operation, expecting `*`"))
+        },
+        (PrimaryExprReduced::Matrix(rhs), PrimaryExprReduced::Fraction(lhs)) => match infix.op {
+            InfixOp::Mul => Ok(PrimaryExprReduced::Matrix(VectorElement::Fraction(lhs) * rhs)),
+            InfixOp::Div1 => Ok(PrimaryExprReduced::Matrix(rhs / VectorElement::Fraction(lhs))),
             _ => Err(format!("Invalid operation, expecting `*`"))
         },
         (PrimaryExprReduced::Vector(lhs), PrimaryExprReduced::Matrix(rhs)) => match infix.op {
