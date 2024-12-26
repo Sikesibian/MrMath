@@ -143,18 +143,24 @@ fn eval_expr(expr: &Expr, env: &mut Env) -> Result<PrimaryExprReduced, String> {
         Expr::Prefix(prefix) => eval_prefix(prefix, env),
         Expr::Infix(infix) => eval_infix(infix, env),
         Expr::Postfix(postfix) => eval_postfix(postfix, env),
-        Expr::Reduced(reduced) => eval_reduced(reduced, env),
+        Expr::Reduced(reduced) => {
+            println!("eval_reduced: {:?}", env);
+            Ok((**reduced).clone()) // eval_reduced(reduced, env),
+        }
     }
 }
 
 fn eval_expr_short(expr: &Expr_short, env: &mut Env) -> Result<PrimaryExprReduced_short, String> {
-    // println!("eval_expr_short: {:?}", env);
+    // println!("eval_expr_short: {:?}", expr);
     match expr {
         Expr_short::PrimaryShort(primaryshort) => eval_primary_short(primaryshort, env),
         Expr_short::Prefix(prefix) => eval_prefix_short(prefix, env),
         Expr_short::Infix(infix) => eval_infix_short(infix, env),
         Expr_short::Postfix(postfix) => eval_postfix_short(postfix, env),
-        Expr_short::Reduced(reduced) => eval_reduced_short(reduced, env),
+        Expr_short::Reduced(reduced) => {
+            println!("eval_reduced_short: {:?}", env);
+            Ok((**reduced).clone()) // eval_reduced_short(reduced, env),
+        }
     }
 }
 
@@ -169,17 +175,17 @@ fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> Result<PrimaryExprReduc
         },
         PrimaryExpr::Integer(int) => Ok(PrimaryExprReduced::Integer(int.clone())),
         PrimaryExpr::Fraction(num, denom) => {
-            let num = match eval_expr_to_reduced(env, num) {
-                Ok(value) => value,
+            let num_clone = match eval_expr_short(num, env) {
+                Ok(value) => value.clone(),
                 Err(value) => return Err(value),
             };
-            let denom = match eval_expr_to_reduced(env, denom) {
-                Ok(value) => value,
+            let denom_clone = match eval_expr_short(denom, env) {
+                Ok(value) => value.clone(),
                 Err(value) => return Err(value),
             };
-            let num_clone = num.clone();
-            let denom_clone = denom.clone();
-            return match (num, denom) {
+            // println!("eval_primary: Fraction: num: {:?}", num);
+            // println!("eval_primary: Fraction: denom: {:?}", denom);
+            return match (num_clone, denom_clone) {
                 (PrimaryExprReduced_short::Integer(num), PrimaryExprReduced_short::Integer(denom)) => 
                     Ok(PrimaryExprReduced::Fraction(num.fraction(denom))),
                 (PrimaryExprReduced_short::Integer(num), PrimaryExprReduced_short::Fraction(denom)) => 
@@ -188,7 +194,7 @@ fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> Result<PrimaryExprReduc
                     Ok(PrimaryExprReduced::Fraction(num / denom)),
                 (PrimaryExprReduced_short::Fraction(num), PrimaryExprReduced_short::Fraction(denom)) =>
                     Ok(PrimaryExprReduced::Fraction(num / denom)),
-                _ => return Err(format!("Invalid fraction: {:?}/{:?}", num_clone, denom_clone)),
+                _ => return Err(format!("Invalid fraction: {:?}/{:?}", num, denom)),
             };
         },
         PrimaryExpr::Vector(vec) => Ok(PrimaryExprReduced::Vector(vec.clone())),
@@ -199,31 +205,32 @@ fn eval_primary(primary: &PrimaryExpr, env: &mut Env) -> Result<PrimaryExprReduc
     }
 
 fn eval_primary_short(primaryshort: &PrimaryExpr_short, env: &mut Env) -> Result<PrimaryExprReduced_short, String> {
-    // println!("eval_primary_short: {:?}", env);
+    // println!("eval_primary_short: {:?}", primaryshort);
     match primaryshort {
         PrimaryExpr_short::Ident(ident) => {
             match env.get(ident) {
-                Some(expr) => match expr {
-                    PrimaryExprReduced::Ident(ident) => Ok(PrimaryExprReduced_short::Ident(ident.clone())),
-                    PrimaryExprReduced::Integer(int) => Ok(PrimaryExprReduced_short::Integer(int.clone())),
-                    PrimaryExprReduced::Fraction(frac) => Ok(PrimaryExprReduced_short::Fraction(frac.clone())),
-                    _ => Err(format!("Unsupported expression: {:?}", expr)),
+                Some(expr) => {
+                    // println!("eval_primary_short: env: {:?}", env);
+                    // println!("eval_primary_short: Ident: {:?}", expr);
+                    Ok(PrimaryExprReduced_short::from(expr.clone()))
                 },
                 None => Err(format!("Variable {} not found", ident)),
             }
         },
         PrimaryExpr_short::Integer(int) => Ok(PrimaryExprReduced_short::Integer(int.clone())),
         PrimaryExpr_short::Fraction(num, denom) => {
-            let num = match eval_expr_to_reduced(env, num) {
+            let num = match eval_expr_short(num, env) {
                 Ok(value) => value,
                 Err(value) => return Err(value),
             };
-            let denom = match eval_expr_to_reduced(env, denom) {
+            let denom = match eval_expr_short(denom, env) {
                 Ok(value) => value,
                 Err(value) => return Err(value),
             };
             let num_clone = num.clone();
             let denom_clone = denom.clone();
+            // println!("eval_primary_short: Fraction: num: {:?}", num);
+            // println!("eval_primary_short: Fraction: denom: {:?}", denom);
             return match (num, denom) {
                 (PrimaryExprReduced_short::Integer(num), PrimaryExprReduced_short::Integer(denom)) => 
                     Ok(PrimaryExprReduced_short::Fraction(num.fraction(denom))),
@@ -353,11 +360,6 @@ fn eval_prefix_short(prefix: &PrefixExpr_short, env: &mut Env) -> Result<Primary
     }
 }
 
-fn eval_expr_to_reduced(env: &mut Env, expr_short: &Box<Expr_short>) -> Result<PrimaryExprReduced_short, String> {
-    // println!("eval_expr_to_reduced: {:?}", env);
-    eval_expr_short(expr_short, env)
-}
-
 fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExprReduced, String> {
     // println!("eval_infix: {:?}", env);
     let lhs = match eval_expr(&infix.lhs, env) {
@@ -485,7 +487,7 @@ fn eval_infix(infix: &InfixExpr, env: &mut Env) -> Result<PrimaryExprReduced, St
 }
 
 fn eval_infix_short(infix: &InfixExpr_short, env: &mut Env) -> Result<PrimaryExprReduced_short, String> {
-    // println!("eval_infix_short: {:?}", env);
+    // println!("eval_infix_short: {:?}", infix);
     let lhs = match eval_expr_short(&infix.lhs, env) {
         Ok(lhs) => lhs,
         Err(err) => return Err(err),
@@ -505,21 +507,9 @@ fn eval_infix_short(infix: &InfixExpr_short, env: &mut Env) -> Result<PrimaryExp
                 Some(rhs_val) => rhs_val,
                 None => return Err(format!("Variable `{}` not found", rhs)),
             };
-            let lhs = match lhs_val {
-                PrimaryExprReduced::Ident(ident) => PrimaryExprReduced_short::Ident(ident.clone()),
-                PrimaryExprReduced::Integer(int) => PrimaryExprReduced_short::Integer(int.clone()),
-                PrimaryExprReduced::Fraction(lhs) => PrimaryExprReduced_short::Fraction(lhs.clone()),
-                _ => return Err(format!("Unsupported Variable type"))
-            };
-            let rhs = match rhs_val {
-                PrimaryExprReduced::Ident(ident) => PrimaryExprReduced_short::Ident(ident.clone()),
-                PrimaryExprReduced::Integer(int) => PrimaryExprReduced_short::Integer(int.clone()),
-                PrimaryExprReduced::Fraction(rhs) => PrimaryExprReduced_short::Fraction(rhs.clone()),
-                _ => return Err(format!("Unsupported Variable type"))
-            };
             eval_infix_short(&InfixExpr_short {
-                lhs: Box::new(Expr_short::Reduced(Box::new(lhs))),
-                rhs: Box::new(Expr_short::Reduced(Box::new(rhs))),
+                lhs: Box::new(Expr_short::Reduced(Box::new(PrimaryExprReduced_short::from(lhs_val.clone())))),
+                rhs: Box::new(Expr_short::Reduced(Box::new(PrimaryExprReduced_short::from(rhs_val.clone())))),
                 op: infix.op.clone(),
             }, env)
         }
@@ -546,7 +536,7 @@ fn eval_infix_short(infix: &InfixExpr_short, env: &mut Env) -> Result<PrimaryExp
             InfixOp::Mul => Ok(PrimaryExprReduced_short::Integer(lhs * rhs)),
             InfixOp::Div0 => Ok(PrimaryExprReduced_short::Integer(lhs / rhs)),
             InfixOp::Mod => Ok(PrimaryExprReduced_short::Integer(lhs % rhs)),
-            InfixOp::Div1 => Ok(PrimaryExprReduced_short::Integer(lhs / rhs)),
+            InfixOp::Div1 => Ok(PrimaryExprReduced_short::Fraction(lhs.fraction(rhs))),
             _ => Err(format!("Invalid operation, expecting `+`, `-`, `*`, `//`, `%`, `/`"))
         }
         (PrimaryExprReduced_short::Integer(lhs), PrimaryExprReduced_short::Fraction(rhs)) | (PrimaryExprReduced_short::Fraction(rhs), PrimaryExprReduced_short::Integer(lhs)) => match infix.op {
@@ -591,14 +581,6 @@ fn eval_postfix_short(postfix: &PostfixExpr_short, env: &mut Env) -> Result<Prim
         (PrimaryExprReduced_short::Integer(int), PostfixOp::Factorial) => Ok(PrimaryExprReduced_short::Integer(int.factorial())),
         _ => Err(format!("Invalid operation, expecting `!` for Int"))
     }
-}
-
-fn eval_reduced(expr: &PrimaryExprReduced, env: &mut Env) -> Result<PrimaryExprReduced, String> {
-    todo!()
-}
-
-fn eval_reduced_short(expr: &PrimaryExprReduced_short, env: &mut Env) -> Result<PrimaryExprReduced_short, String> {
-    todo!()
 }
 
 #[cfg(test)]
