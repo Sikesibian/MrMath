@@ -1,5 +1,4 @@
 use crate::backend::bigint::{BigInt, fraction::Fraction, matrix::{Matrix, Vector}};
-use crate::backend::interpreter::*;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct TransUnit {
@@ -28,21 +27,47 @@ pub enum Expr {
     Prefix(Box<PrefixExpr>),
     Infix(Box<InfixExpr>),
     Postfix(Box<PostfixExpr>),
+    Reduced(Box<PrimaryExprReduced>),
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Expr_short {
     PrimaryShort(PrimaryExpr_short),
-    Prefix(Box<PrefixExpr>),
-    Infix(Box<InfixExpr>),
-    Postfix(Box<PostfixExpr>),
+    Prefix(Box<PrefixExpr_short>),
+    Infix(Box<InfixExpr_short>),
+    Postfix(Box<PostfixExpr_short>),
+    Reduced(Box<PrimaryExprReduced_short>),
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum PrimaryExprReduced {
+    Ident(String),
+    Integer(BigInt),
+    Fraction(Fraction),
+    Vector(Vector),
+    Matrix(Matrix),
+    Boolean(bool),
+}
+
+impl PrimaryExprReduced {
+    pub fn to_string(&self) -> String {
+        match self {
+            PrimaryExprReduced::Ident(s) => s.clone(),
+            PrimaryExprReduced::Integer(i) => i.to_string(),
+            PrimaryExprReduced::Fraction(f) => f.to_string(),
+            PrimaryExprReduced::Vector(v) => v.to_string(),
+            PrimaryExprReduced::Matrix(m)=> m.to_string(),
+            // PrimaryExprReduced::Boolean(b) => b.to_string(),
+            _ => panic!("PrimaryExprReduced::to_string should not be used"),
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum PrimaryExpr {
     Ident(String),
     Integer(BigInt),
-    Fraction(Fraction),
+    Fraction(Box<Expr_short>, Box<Expr_short>),
     Vector(Vector),
     Matrix(Matrix),
     Expr(Box<Expr>),
@@ -50,49 +75,41 @@ pub enum PrimaryExpr {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum PrimaryExpr_short {
+pub enum PrimaryExprReduced_short {
     Ident(String),
     Integer(BigInt),
     Fraction(Fraction),
-    Boolean(bool),
+}
+
+impl From<PrimaryExprReduced> for PrimaryExprReduced_short {
+    fn from(expr: PrimaryExprReduced) -> Self {
+        match expr {
+            PrimaryExprReduced::Ident(s) => PrimaryExprReduced_short::Ident(s),
+            PrimaryExprReduced::Integer(i) => PrimaryExprReduced_short::Integer(i),
+            PrimaryExprReduced::Fraction(f) => PrimaryExprReduced_short::Fraction(f),
+            _ => panic!("PrimaryExprReduced::from should not be used"),
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum PrimaryExpr_short {
+    Ident(String),
+    Integer(BigInt),
+    Fraction(Box<Expr_short>, Box<Expr_short>),
+    Expr(Box<Expr_short>),
 }
 
 impl PrimaryExpr {
     pub fn get_type(&self) -> Type {
         match self {
             PrimaryExpr::Integer(_) => Type::Int,
-            PrimaryExpr::Fraction(_) => Type::Frac,
+            PrimaryExpr::Fraction(_, _) => Type::Frac,
             PrimaryExpr::Vector(_) => Type::Vector,
             PrimaryExpr::Matrix(_) => Type::Matrix,
             PrimaryExpr::Expr(_) => panic!("PrimaryExpr::Expr should not be used"),
             PrimaryExpr::Boolean(_) => panic!("PrimaryExpr::Boolean should not be used temporarily"),
             PrimaryExpr::Ident(_) => panic!("PrimaryExpr::Ident should not be used")
-        }
-    }
-
-    pub fn as_int(&self) -> BigInt {
-        match self {
-            PrimaryExpr::Integer(i) => i.clone(),
-            _ => panic!("PrimaryExpr::as_int should not be used")
-        }
-    }
-
-    pub fn as_frac(&self) -> Fraction {
-        match self {
-            PrimaryExpr::Fraction(f) => f.clone(),
-            _ => panic!("PrimaryExpr::as_frac should not be used")
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            PrimaryExpr::Ident(s) => s.clone(),
-            PrimaryExpr::Integer(i) => i.to_string(),
-            PrimaryExpr::Fraction(f) => f.to_string(),
-            PrimaryExpr::Vector(v) => v.to_string(),
-            PrimaryExpr::Matrix(m) => m.to_string(),
-            PrimaryExpr::Expr(_) => panic!("PrimaryExpr::Expr should not be used"),
-            PrimaryExpr::Boolean(_) => panic!("PrimaryExpr::Boolean should not be used temporarily")
         }
     }
 }
@@ -154,6 +171,25 @@ pub struct PostfixExpr {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+pub struct PrefixExpr_short {
+    pub op: PrefixOp,
+    pub expr: Box<Expr_short>,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct InfixExpr_short {
+    pub lhs: Box<Expr_short>,
+    pub op: InfixOp,
+    pub rhs: Box<Expr_short>,
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct PostfixExpr_short {
+    pub expr: Box<Expr_short>,
+    pub op: PostfixOp,
+}
+
+#[derive(PartialEq, Clone, Debug)]
 pub enum Type {
     Bool,
     Int,
@@ -171,7 +207,7 @@ pub enum Decl {
 #[derive(PartialEq, Clone, Debug)]
 pub struct VarDecl {
     pub name: String,
-    pub ty: Type,
+    // pub ty: Type,
     pub expr: Box<Expr>,
 }
 
