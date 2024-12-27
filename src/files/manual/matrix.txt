@@ -9,7 +9,7 @@
         `*` `/`: Matrix -> Integer/Fraction -> Matrix
         `*`: Integer/Fraction -> Matrix -> Matrix
       PostfixOp (`Integer Op`):
-        None
+        `^T`: Matrix -> Matrix
     Examples:
       - `Mat[[1, 2, 3], [2/ 5, 3 - 4, x]]`
       - `Mat[[1, 2 + 4 / 5, 3]] * Vec[4, 5, 6]`

@@ -34,16 +34,17 @@ impl Manual {
 lazy_static::lazy_static! {
     static ref MANUALS: HashMap<&'static str, Manual> = {
         let mut m = HashMap::new();
-        m.insert("Variable", Manual::new(include_str!("../files/manual/variable.txt")));
-        m.insert("Integer", Manual::new(include_str!("../files/manual/integer.txt")));
-        m.insert("Fraction", Manual::new(include_str!("../files/manual/fraction.txt")));
-        m.insert("Vector", Manual::new(include_str!("../files/manual/vector.txt")));
-        m.insert("Matrix", Manual::new(include_str!("../files/manual/matrix.txt")));
+        m.insert("Var", Manual::new(include_str!("../files/manual/variable.txt")));
+        m.insert("Const", Manual::new(include_str!("../files/manual/variable.txt")));
+        m.insert("Int", Manual::new(include_str!("../files/manual/integer.txt")));
+        m.insert("Frac", Manual::new(include_str!("../files/manual/fraction.txt")));
+        m.insert("Vec", Manual::new(include_str!("../files/manual/vector.txt")));
+        m.insert("Mat", Manual::new(include_str!("../files/manual/matrix.txt")));
         m
     };
 }
 pub fn man_info(ty: &str) {
-    if ty == "details" {
+    if ty.to_lowercase() == "details" {
         Manual::show_keys();
         return;
     }
@@ -63,7 +64,7 @@ pub fn man_info(ty: &str) {
                     format!("{}", line)
                 }
             }).collect::<Vec<String>>().join("");
-            println!("{}", content_cyan);
+            println!("{esc}[2J{esc}[1;1H{cont}\n\nInput `{msg}` to get detailed info.\n", esc = 27 as char, cont = content_cyan, msg = Green.paint("help"));
         },
     );
 }
