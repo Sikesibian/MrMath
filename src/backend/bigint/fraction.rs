@@ -164,10 +164,20 @@ impl From<BigInt> for Fraction {
 impl Fraction {
     pub fn to_string(&self) -> String {
         if self.numerator.sign {
-            format!("-Frac[{},{}]", self.numerator.clone().abs().to_string(), self.denominator.to_string())
+            // format!("-Frac[{},{}]", self.numerator.clone().abs().to_string(), self.denominator.to_string())
+            if self.denominator == BigInt::one() {
+                format!("-{}", self.numerator.clone().abs().to_string())
+            } else {
+                format!("-{}/{}", self.numerator.clone().abs().to_string(), self.denominator.to_string())
+            }
         }
         else {
-            format!("Frac[{},{}]", self.numerator.to_string(), self.denominator.to_string())
+            // format!("Frac[{},{}]", self.numerator.to_string(), self.denominator.to_string())
+            if self.denominator == BigInt::one() {
+                format!("{}", self.numerator.clone().abs().to_string())
+            } else {
+                format!("{}/{}", self.numerator.to_string(), self.denominator.to_string())
+            }
         }
     }
 

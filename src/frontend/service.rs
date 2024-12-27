@@ -1,9 +1,10 @@
 use std::io::{self, Write};
 use ansi_term::Colour::{Yellow, Green};
+use crate::frontend::help::man_info;
 use crate::frontend::{help, history};
 use crate::backend::{
     driver::run,
-    interpreter::Env
+    interpreter::interpreter::Env
 };
 
 pub fn console() {        
@@ -16,20 +17,29 @@ pub fn console() {
         io::stdin().read_line(&mut input).expect("Error: Failed to read line!");
         input = input.trim().to_string();
         history::add_to_history(input.clone());
-        // let mut parts = input.trim().split_whitespace();
+        let mut parts = input.trim().split_whitespace();
         match input.to_lowercase().as_str() {
             "" => continue,
             "exit" | "quit" => break,
             "help" => help::help_info(),
             "history" => history::history_info(),
-            "clear" => print!("{esc}[2J{esc}[1;1H", esc = 27 as char),
+            "clear" => print!("{esc}[2J{esc}[1;1H{msg}", esc = 27 as char, msg = Green.paint("Input `help` to get detailed info.\n\n")),
             "new" => {
                 env.clear();
                 println!("{}", Green.paint("New environment created!"));
             },
             _ => {
                 // println!("{}", Red.paint("Invalid command!"))
-                run(&input, &mut env);
+                if let Some(command) = parts.next() {
+                    match command {
+                        "man" => {
+                            if let Some(ty) = parts.next() { man_info(ty); } 
+                            else { println!("Usage: man <type>"); }
+                        },
+                        _ => run(&input, &mut env),
+                    }
+                }
+                // run(&input, &mut env);
             },
         }
     }

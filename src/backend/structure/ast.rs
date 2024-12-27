@@ -68,8 +68,8 @@ pub enum PrimaryExpr {
     Ident(String),
     Integer(BigInt),
     Fraction(Box<Expr_short>, Box<Expr_short>),
-    Vector(Vector),
-    Matrix(Matrix),
+    Vector(Vec<Expr_short>),
+    Matrix(Vec<Vec<Expr_short>>),
     Expr(Box<Expr>),
     Boolean(bool),
 }
@@ -214,14 +214,14 @@ pub struct VarDecl {
 #[derive(PartialEq, Clone, Debug)]
 pub struct ConstDecl {
     pub name: String,
-    pub ty: Type,
+    // pub ty: Type,
     pub expr: Box<Expr>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Assign {
-    pub lhs: String,
-    pub rhs: Box<Expr>,
+    pub name: String,
+    pub expr: Box<Expr>,
 }
 
 #[derive(PartialEq, Clone, Debug)]

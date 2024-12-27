@@ -1,15 +1,107 @@
-use crate::backend::bigint::BigInt;
-use std::ops::{Add, Sub, Mul, Neg};
+use crate::backend::bigint::{BigInt, fraction::Fraction};
+use std::ops::{Add, Div, Mul, Neg, Sub};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VectorElement {
+    BigInt(BigInt),
+    Fraction(Fraction),
+}
+
+pub trait IntoVectorElement {
+    fn into_vector_element(self) -> VectorElement;
+}
+
+impl IntoVectorElement for BigInt {
+    fn into_vector_element(self) -> VectorElement {
+        VectorElement::BigInt(self)
+    }
+}
+
+impl IntoVectorElement for Fraction {
+    fn into_vector_element(self) -> VectorElement {
+        VectorElement::Fraction(self)
+    }
+}
+
+impl Neg for VectorElement {
+    type Output = VectorElement;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            VectorElement::BigInt(bi) => VectorElement::BigInt(-bi),
+            VectorElement::Fraction(fr) => VectorElement::Fraction(-fr),
+        }
+    }
+}
+
+impl Add for VectorElement {
+    type Output = VectorElement;
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (VectorElement::BigInt(l), VectorElement::BigInt(r)) => VectorElement::BigInt(l + r),
+            (VectorElement::Fraction(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l + r),
+            (VectorElement::BigInt(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l + r),
+            (VectorElement::Fraction(l), VectorElement::BigInt(r)) => VectorElement::Fraction(l + r),
+        }
+    }
+}
+
+impl Sub for VectorElement {
+    type Output = VectorElement;
+    fn sub(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (VectorElement::BigInt(l), VectorElement::BigInt(r)) => VectorElement::BigInt(l - r),
+            (VectorElement::Fraction(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l - r),
+            (VectorElement::BigInt(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l - r),
+            (VectorElement::Fraction(l), VectorElement::BigInt(r)) => VectorElement::Fraction(l - r),
+        }
+    }
+}
+
+impl Mul for VectorElement {
+    type Output = VectorElement;
+    fn mul(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (VectorElement::BigInt(l), VectorElement::BigInt(r)) => VectorElement::BigInt(l * r),
+            (VectorElement::Fraction(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l * r),
+            (VectorElement::BigInt(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l * r),
+            (VectorElement::Fraction(l), VectorElement::BigInt(r)) => VectorElement::Fraction(l * r),
+        }
+    }
+}
+
+impl Div for VectorElement {
+    type Output = VectorElement;
+    fn div(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (VectorElement::BigInt(l), VectorElement::BigInt(r)) => VectorElement::BigInt(l / r),
+            (VectorElement::Fraction(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l / r),
+            (VectorElement::BigInt(l), VectorElement::Fraction(r)) => VectorElement::Fraction(l / r),
+            (VectorElement::Fraction(l), VectorElement::BigInt(r)) => VectorElement::Fraction(l / r),
+        }
+    }
+}
+
+impl VectorElement {
+    fn to_string(&self) -> String {
+        match self {
+            VectorElement::BigInt(x) => x.to_string(),
+            VectorElement::Fraction(x) => x.to_string(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Vector {
-    elements: Vec<BigInt>,
+    elements: Vec<VectorElement>,
 }
 
 impl Vector {
-    pub fn new(elements: Vec<BigInt>) -> Self {
+    pub fn new<T: IntoVectorElement>(elements: Vec<T>) -> Self {
+        let elements = elements.into_iter().map(|e| e.into_vector_element()).collect();
         Vector { elements }
     }
+
     pub fn len(&self) -> usize {
         self.elements.len()
     }
@@ -19,6 +111,12 @@ impl Vector {
             .map(|elem| elem.to_string())
             .collect::<Vec<_>>()
             .join(", "))
+    }
+}
+
+impl From<Vec<VectorElement>> for Vector {
+    fn from(elements: Vec<VectorElement>) -> Vector {
+        Vector { elements }
     }
 }
 
@@ -58,13 +156,12 @@ impl Sub for Vector {
 }
 
 impl Mul for Vector {
-    type Output = BigInt;
-
-    fn mul(self, other: Vector) -> BigInt {
+    type Output = VectorElement;
+    fn mul(self, other: Vector) -> VectorElement {
         assert_eq!(self.len(), other.len());
         self.elements.into_iter().zip(other.elements.into_iter())
             .map(|(a, b)| a * b)
-            .fold(BigInt::zero(), |acc, x| acc + x)
+            .fold(VectorElement::BigInt(BigInt::zero()), |acc, x| acc + x)
     }
 }
 
@@ -80,10 +177,10 @@ impl Mul<Matrix> for Vector {
     }
 }
 
-impl Mul<BigInt> for Matrix {
+impl Mul<VectorElement> for Matrix {
     type Output = Matrix;
 
-    fn mul(self, scalar: BigInt) -> Matrix {
+    fn mul(self, scalar: VectorElement) -> Matrix {
         let rows = self.rows.into_iter()
             .map(|row| row * scalar.clone())
             .collect();
@@ -91,7 +188,7 @@ impl Mul<BigInt> for Matrix {
     }
 }
 
-impl Mul<Matrix> for BigInt {
+impl Mul<Matrix> for VectorElement {
     type Output = Matrix;
 
     fn mul(self, matrix: Matrix) -> Matrix {
@@ -99,10 +196,10 @@ impl Mul<Matrix> for BigInt {
     }
 }
 
-impl Mul<BigInt> for Vector {
+impl Mul<VectorElement> for Vector {
     type Output = Vector;
 
-    fn mul(self, scalar: BigInt) -> Vector {
+    fn mul(self, scalar: VectorElement) -> Vector {
         let elements = self.elements.into_iter()
             .map(|elem| elem * scalar.clone())
             .collect();
@@ -110,11 +207,18 @@ impl Mul<BigInt> for Vector {
     }
 }
 
-impl Mul<Vector> for BigInt {
+impl Mul<Vector> for VectorElement {
     type Output = Vector;
 
     fn mul(self, vector: Vector) -> Vector {
         vector * self
+    }
+}
+
+impl Div<VectorElement> for Vector {
+    type Output = Vector;
+    fn div(self, scalar: VectorElement) -> Vector {
+        (VectorElement::Fraction(Fraction::one()) / scalar) * self
     }
 }
 
@@ -127,13 +231,6 @@ impl Matrix {
     pub fn new(rows: Vec<Vector>) -> Self {
         let row_len = rows[0].len();
         assert!(rows.iter().all(|row| row.len() == row_len));
-        Matrix { rows }
-    }
-
-    pub fn from_vecvec(elements: Vec<Vec<BigInt>>) -> Self {
-        let rows = elements.into_iter()
-            .map(Vector::new)
-            .collect();
         Matrix { rows }
     }
 
@@ -171,28 +268,53 @@ impl Matrix {
     }
 
     pub fn transpose(&self) -> Matrix {
-        let mut transposed_elements = vec![vec![BigInt::zero(); self.rows()]; self.cols()];
+        let mut transposed_elements = vec![vec![VectorElement::BigInt(BigInt::zero()); self.rows()]; self.cols()];
         for i in 0..self.rows() {
             for j in 0..self.cols() {
                 transposed_elements[j][i] = self.rows[i].elements[j].clone();
             }
         }
         let transposed_rows = transposed_elements.into_iter()
-            .map(Vector::new)
+            .map(|row| Vector { elements: row })
             .collect();
         Matrix { rows: transposed_rows }
-        }
     }
+}
 
-    impl Add for Matrix {
-        type Output = Matrix;
+impl From<Vec<Vec<VectorElement>>> for Matrix {
+    fn from(rows: Vec<Vec<VectorElement>>) -> Self {
+        // assert!(rows.iter().all(|row| row.len() == rows[0].len()));
+        // if !rows.iter().all(|row| row.len() == rows[0].len()) {
+        //     println!("Matrix is valid, each row should have the same length");
+        //     return Matrix::from(vec![]);
+        // }
+        let rows = rows.into_iter()
+            .map(|row| Vector { elements: row })
+            .collect();
+        Matrix { rows }
+    }
+}
 
-        fn add(self, other: Matrix) -> Matrix {
-            assert_eq!(self.rows(), other.rows());
-            assert_eq!(self.cols(), other.cols());
-            let rows = self.rows.into_iter().zip(other.rows.into_iter())
-                .map(|(a, b)| a + b)
-                .collect();
+impl Neg for Matrix {
+    type Output = Matrix;
+
+    fn neg(self) -> Matrix {
+        let rows = self.rows.into_iter()
+            .map(|row| -row)
+            .collect();
+        Matrix { rows }
+    }
+}
+
+impl Add for Matrix {
+    type Output = Matrix;
+
+    fn add(self, other: Matrix) -> Matrix {
+        assert_eq!(self.rows(), other.rows());
+        assert_eq!(self.cols(), other.cols());
+        let rows = self.rows.into_iter().zip(other.rows.into_iter())
+            .map(|(a, b)| a + b)
+            .collect();
         Matrix { rows }
     }
 }
@@ -215,7 +337,7 @@ impl Mul for Matrix {
 
     fn mul(self, other: Matrix) -> Matrix {
         assert_eq!(self.cols(), other.rows());
-        let mut result_elements = vec![vec![BigInt::zero(); other.cols()]; self.rows()];
+        let mut result_elements = vec![vec![VectorElement::BigInt(BigInt::zero()); other.cols()]; self.rows()];
         for i in 0..self.rows() {
             for j in 0..other.cols() {
                 for k in 0..self.cols() {
@@ -224,7 +346,7 @@ impl Mul for Matrix {
             }
         }
         let result_rows = result_elements.into_iter()
-            .map(Vector::new)
+            .map(|row| Vector { elements: row })
             .collect();
         Matrix { rows: result_rows }
     }
@@ -242,12 +364,11 @@ impl Mul<Vector> for Matrix {
     }
 }
 
-impl Neg for Matrix {
+impl Div<VectorElement> for Matrix {
     type Output = Matrix;
-
-    fn neg(self) -> Matrix {
+    fn div(self, other: VectorElement) -> Matrix {
         let rows = self.rows.into_iter()
-            .map(|row| -row)
+            .map(|row| row / other.clone())
             .collect();
         Matrix { rows }
     }
@@ -258,19 +379,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vector_add() {
-        let a = Vector::new(vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]);
-        let b = Vector::new(vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]);
-        let c = a + b;
-        assert_eq!(c.elements, vec![BigInt::from("4".to_string()), BigInt::from("6".to_string())]);
-    }
+fn test_vector_add() {
+    let a = Vector::new(vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]);
+    let b = Vector::new(vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]);
+    let c = a + b;
+    assert_eq!(
+        c.elements,
+        vec![
+            VectorElement::BigInt(BigInt::from("4".to_string())),
+            VectorElement::BigInt(BigInt::from("6".to_string()))
+        ]
+    );
+}
 
     #[test]
     fn test_vector_sub() {
         let a = Vector::new(vec![BigInt::from("5".to_string()), BigInt::from("6".to_string())]);
         let b = Vector::new(vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]);
         let c = a - b;
-        assert_eq!(c.elements, vec![BigInt::from("2".to_string()), BigInt::from("2".to_string())]);
+        assert_eq!(
+            c.elements,
+            vec![
+                BigInt::from("2".to_string()).into_vector_element(),
+                BigInt::from("2".to_string()).into_vector_element()
+            ]
+        );
     }
 
     #[test]
@@ -278,14 +411,16 @@ mod tests {
         let a = Vector::new(vec![BigInt::from("2".to_string()), BigInt::from("3".to_string())]);
         let b = Vector::new(vec![BigInt::from("4".to_string()), BigInt::from("5".to_string())]);
         let c = a * b;
-        assert_eq!(c, BigInt::from("23".to_string())); // 2*4 + 3*5 = 8 + 15 = 23
+        assert_eq!(c, 
+            BigInt::from("23".to_string()).into_vector_element()
+        ); // 2*4 + 3*5 = 8 + 15 = 23
     }
 
     #[test]
     fn test_vector_neg() {
         let a = Vector::new(vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]);
         let b = -a;
-        assert_eq!(b.elements, vec![-BigInt::from("1".to_string()), -BigInt::from("2".to_string())]);
+        assert_eq!(b.elements, vec![-BigInt::from("1".to_string()).into_vector_element(), -BigInt::from("2".to_string()).into_vector_element()]);
     }
 
     #[test]
@@ -296,140 +431,151 @@ mod tests {
 
     #[test]
     fn test_matrix_add() {
-        let a = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())], 
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let a = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()], 
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
-        let b = Matrix::from_vecvec(vec![
-            vec![BigInt::from("5".to_string()), BigInt::from("6".to_string())], 
-            vec![BigInt::from("7".to_string()), BigInt::from("8".to_string())]
+        let b = Matrix::from(vec![
+            vec![BigInt::from("5".to_string()).into_vector_element(), BigInt::from("6".to_string()).into_vector_element()], 
+            vec![BigInt::from("7".to_string()).into_vector_element(), BigInt::from("8".to_string()).into_vector_element()]
         ]);
         let c = a + b;
         assert_eq!(c.rows(), 2);
         assert_eq!(c.cols(), 2);
-        assert_eq!(c.rows[0].elements, vec![BigInt::from("6".to_string()), BigInt::from("8".to_string())]);
-        assert_eq!(c.rows[1].elements, vec![BigInt::from("10".to_string()), BigInt::from("12".to_string())]);
+        assert_eq!(c.rows[0].elements, vec![BigInt::from("6".to_string()).into_vector_element(), BigInt::from("8".to_string()).into_vector_element()]);
+        assert_eq!(c.rows[1].elements, vec![BigInt::from("10".to_string()).into_vector_element(), BigInt::from("12".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_matrix_sub() {
-        let a = Matrix::from_vecvec(vec![
-            vec![BigInt::from("5".to_string()), BigInt::from("6".to_string())], 
-            vec![BigInt::from("7".to_string()), BigInt::from("8".to_string())]
+        let a = Matrix::from(vec![
+            vec![BigInt::from("5".to_string()).into_vector_element(), BigInt::from("6".to_string()).into_vector_element()], 
+            vec![BigInt::from("7".to_string()).into_vector_element(), BigInt::from("8".to_string()).into_vector_element()]
         ]);
-        let b = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())], 
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let b = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()], 
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
         let c = a - b;
         assert_eq!(c.rows(), 2);
         assert_eq!(c.cols(), 2);
-        assert_eq!(c.rows[0].elements, vec![BigInt::from("4".to_string()), BigInt::from("4".to_string())]);
-        assert_eq!(c.rows[1].elements, vec![BigInt::from("4".to_string()), BigInt::from("4".to_string())]);
+        assert_eq!(c.rows[0].elements, vec![BigInt::from("4".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]);
+        assert_eq!(c.rows[1].elements, vec![BigInt::from("4".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_matrix_mul() {
-        let a = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())], 
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let a = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()], 
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
-        let b = Matrix::from_vecvec(vec![
-            vec![BigInt::from("2".to_string()), BigInt::from("0".to_string())], 
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]
+        let b = Matrix::from(vec![
+            vec![BigInt::from("2".to_string()).into_vector_element(), BigInt::from("0".to_string()).into_vector_element()], 
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()]
         ]);
         let c = a * b;
         assert_eq!(c.rows(), 2);
         assert_eq!(c.cols(), 2);
-        assert_eq!(c.rows[0].elements, vec![BigInt::from("4".to_string()), BigInt::from("4".to_string())]);
-        assert_eq!(c.rows[1].elements, vec![BigInt::from("10".to_string()), BigInt::from("8".to_string())]);
+        assert_eq!(c.rows[0].elements, vec![BigInt::from("4".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]);
+        assert_eq!(c.rows[1].elements, vec![BigInt::from("10".to_string()).into_vector_element(), BigInt::from("8".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_matrix_neg() {
-        let a = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())], 
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let a = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()], 
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
         let b = -a;
         assert_eq!(b.rows(), 2);
         assert_eq!(b.cols(), 2);
-        assert_eq!(b.rows[0].elements, vec![-BigInt::from("1".to_string()), -BigInt::from("2".to_string())]);
-        assert_eq!(b.rows[1].elements, vec![-BigInt::from("3".to_string()), -BigInt::from("4".to_string())]);
+        assert_eq!(b.rows[0].elements, vec![-BigInt::from("1".to_string()).into_vector_element(), -BigInt::from("2".to_string()).into_vector_element()]);
+        assert_eq!(b.rows[1].elements, vec![-BigInt::from("3".to_string()).into_vector_element(), -BigInt::from("4".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_matrix_transpose() {
-        let a = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())], 
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let a = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()], 
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
         let b = a.transpose();
         assert_eq!(b.rows(), 2);
         assert_eq!(b.cols(), 2);
-        assert_eq!(b.rows[0].elements, vec![BigInt::from("1".to_string()), BigInt::from("3".to_string())]);
-        assert_eq!(b.rows[1].elements, vec![BigInt::from("2".to_string()), BigInt::from("4".to_string())]);
+        assert_eq!(b.rows[0].elements, vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("3".to_string()).into_vector_element()]);
+        assert_eq!(b.rows[1].elements, vec![BigInt::from("2".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_vector_matrix_mul() {
         let v = Vector::new(vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]);
-        let m = Matrix::from_vecvec(vec![
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())],
-            vec![BigInt::from("5".to_string()), BigInt::from("6".to_string())]
+        let m = Matrix::from(vec![
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()],
+            vec![BigInt::from("5".to_string()).into_vector_element(), BigInt::from("6".to_string()).into_vector_element()]
         ]);
         let result = v * m;
-        assert_eq!(result.elements, vec![BigInt::from("13".to_string()), BigInt::from("16".to_string())]); // 1*3 + 2*5 = 13, 1*4 + 2*6 = 16
+        assert_eq!(result.elements, vec![BigInt::from("13".to_string()).into_vector_element(), BigInt::from("16".to_string()).into_vector_element()]); // 1*3 + 2*5 = 13, 1*4 + 2*6 = 16
     }
 
     #[test]
     fn test_matrix_vector_mul() {
-        let m = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())],
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let m = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()],
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
         let v = Vector::new(vec![BigInt::from("2".to_string()), BigInt::from("1".to_string())]);
         let result = m * v;
-        assert_eq!(result.elements, vec![BigInt::from("4".to_string()), BigInt::from("10".to_string())]); // 1*2 + 2*1 = 4, 3*2 + 4*1 = 10
+        assert_eq!(result.elements, vec![BigInt::from("4".to_string()).into_vector_element(), BigInt::from("10".to_string()).into_vector_element()]); // 1*2 + 2*1 = 4, 3*2 + 4*1 = 10
     }
 
     #[test]
     fn test_vector_scalar_mul() {
         let v = Vector::new(vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]);
-        let scalar = BigInt::from("3".to_string());
+        let scalar = BigInt::from("3".to_string()).into_vector_element();
         let result = v * scalar;
-        assert_eq!(result.elements, vec![BigInt::from("3".to_string()), BigInt::from("6".to_string())]);
+        assert_eq!(result.elements, vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("6".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_scalar_vector_mul() {
-        let scalar = BigInt::from("3".to_string());
+        let scalar = BigInt::from("3".to_string()).into_vector_element();
         let v = Vector::new(vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())]);
         let result = scalar * v;
-        assert_eq!(result.elements, vec![BigInt::from("3".to_string()), BigInt::from("6".to_string())]);
+        assert_eq!(result.elements, vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("6".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_matrix_scalar_mul() {
-        let m = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())],
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let m = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()],
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
-        let scalar = BigInt::from("2".to_string());
+        let scalar = BigInt::from("2".to_string()).into_vector_element();
         let result = m * scalar;
-        assert_eq!(result.rows[0].elements, vec![BigInt::from("2".to_string()), BigInt::from("4".to_string())]);
-        assert_eq!(result.rows[1].elements, vec![BigInt::from("6".to_string()), BigInt::from("8".to_string())]);
+        assert_eq!(result.rows[0].elements, vec![BigInt::from("2".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]);
+        assert_eq!(result.rows[1].elements, vec![BigInt::from("6".to_string()).into_vector_element(), BigInt::from("8".to_string()).into_vector_element()]);
     }
 
     #[test]
     fn test_scalar_matrix_mul() {
-        let scalar = BigInt::from("2".to_string());
-        let m = Matrix::from_vecvec(vec![
-            vec![BigInt::from("1".to_string()), BigInt::from("2".to_string())],
-            vec![BigInt::from("3".to_string()), BigInt::from("4".to_string())]
+        let scalar = BigInt::from("2".to_string()).into_vector_element();
+        let m = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()],
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]
         ]);
         let result = scalar * m;
-        assert_eq!(result.rows[0].elements, vec![BigInt::from("2".to_string()), BigInt::from("4".to_string())]);
-        assert_eq!(result.rows[1].elements, vec![BigInt::from("6".to_string()), BigInt::from("8".to_string())]);
+        assert_eq!(result.rows[0].elements, vec![BigInt::from("2".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()]);
+        assert_eq!(result.rows[1].elements, vec![BigInt::from("6".to_string()).into_vector_element(), BigInt::from("8".to_string()).into_vector_element()]);
+    }
+
+    #[test]
+    fn test_matrix_scalar_multiplication_with_fraction() {
+        let scalar = Fraction::new(BigInt::from("2".to_string()), BigInt::from("3".to_string())).into_vector_element();
+        let matrix = Matrix::from(vec![
+            vec![BigInt::from("1".to_string()).into_vector_element(), BigInt::from("2".to_string()).into_vector_element()],
+            vec![BigInt::from("3".to_string()).into_vector_element(), BigInt::from("4".to_string()).into_vector_element()],
+        ]);
+        let result = matrix * scalar;
+        println!("{}", result.to_string())
     }
 }

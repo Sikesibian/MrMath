@@ -1,5 +1,6 @@
+use crate::frontend::check::check_keyword;
 use crate::backend::structure::ast::*;
-use crate::backend::bigint::{BigInt, matrix::{Matrix, Vector}};
+use crate::backend::bigint::BigInt;
 use pest_derive::Parser;
 use pest::{pratt_parser::PrattParser, Parser, iterators::Pair};
 
@@ -41,7 +42,7 @@ pub fn parse_trans_unit(pair: Pair<Rule>) -> Result<TransUnit, pest::error::Erro
     })
 }
 
-// BLOCK = { (STMT ~ NEWLINE) + }
+// BLOCK = { STMT* }
 pub fn parse_block(pair: Pair<Rule>) -> Result<Block, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::BLOCK);
     let mut stmts = Vec::new();
@@ -59,25 +60,73 @@ pub fn parse_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::VAR_STMT => parse_var_stmt(inner),
+        Rule::CONST_STMT => parse_const_stmt(inner),
         Rule::EXPR_STMT => parse_expr_stmt(inner),
-        Rule::PRINT_STMT => parse_print_stmt(inner),
+        Rule::ASSIGN_STMT => parse_assign_stmt(inner),
         _ => panic!("Invalid statement"),
     }
 }
 
-// VAR_STMT = { VAR ~ WHITE_SPACE* ~ IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ TYPE ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
+// VAR_STMT = { VAR ~ WHITE_SPACE* ~ IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
 pub fn parse_var_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::VAR_STMT);
+    let span = pair.as_span();
     let mut inner = pair.into_inner();
     let _ = inner.next().unwrap();
-    let id = inner.next().unwrap();
+    let id = inner.next().unwrap().as_str().to_string();
     // let ty =inner.next().unwrap();
     let expr = inner.next().unwrap();
+    if check_keyword(&id) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Invalid variable name, conflicting with KEYWORDS".to_string() },
+            span,
+        ));
+    }
     Ok(Stmt::Decl(Decl::Var(VarDecl {
-        name: id.as_str().to_string(),
+        name: id,
         // ty: parse_type(ty)?,
         expr: Box::new(parse_expr(expr)?),
     })))
+}
+
+// CONST_STMT = { CONST ~ WHITE_SPACE* ~ IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
+pub fn parse_const_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::CONST_STMT);
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+    let _ = inner.next().unwrap();
+    let id = inner.next().unwrap().as_str().to_string();
+    // let ty =inner.next().unwrap();
+    let expr = inner.next().unwrap();
+    if check_keyword(&id) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Invalid variable name, conflicting with KEYWORDS".to_string() },
+            span,
+        ));
+    }
+    Ok(Stmt::Decl(Decl::Const(ConstDecl {
+        name: id,
+        // ty: parse_type(ty)?,
+        expr: Box::new(parse_expr(expr)?),
+    })))
+}
+
+// ASSIGN_STMT = { IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
+pub fn parse_assign_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::ASSIGN_STMT);
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+    let id = inner.next().unwrap().as_str().to_string();
+    if check_keyword(&id) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Invalid variable name, conflicting with KEYWORDS".to_string() },
+            span,
+        ));
+    }
+    Ok(Stmt::Assign(Assign {
+        name: id,
+        expr: Box::new(parse_expr(inner.next().unwrap())?),
+    }))
 }
 
 // EXPR_STMT = { EXPR ~ WHITE_SPACE* }
@@ -87,7 +136,7 @@ pub fn parse_expr_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule
     Ok(Stmt::Expr(parse_expr(expr)?))
 }
 
-// PRINT_STMT = { "print" ~ EXPR ~ ";" }
+// PRINT_STMT = { "print" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
 pub fn parse_print_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PRINT_STMT);
     let expr = pair.into_inner().next().unwrap();
@@ -127,13 +176,6 @@ pub fn parse_expr(pair: Pair<Rule>) -> Result<Expr, pest::error::Error<Rule>> {
     Ok(expr)
 }
 
-// INFIX_OPS = { WHITE_SPACE* ~ INFIX_OP ~ WHITE_SPACE*}
-pub fn parse_infix_ops(pair: Pair<Rule>) -> Result<InfixOp, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::INFIX_OPS);
-    let inner = pair.into_inner().next().unwrap();
-    parse_infix(inner)
-}
-
 // ATOM_EXPR = { PREFIX_OPS ~ PRIMARY_EXPR ~ POSTFIX_OPS }
 pub fn parse_atom_expr(pair: Pair<Rule>) -> Result<Expr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::ATOM_EXPR);
@@ -160,7 +202,7 @@ pub fn parse_atom_expr(pair: Pair<Rule>) -> Result<Expr, pest::error::Error<Rule
     Ok(expr)
 }
 
-// PRIMARY_EXPR = { IDENTIFIER | INTEGER | FRACTION | VECTOR | MATRIX | "(" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ")" }
+// PRIMARY_EXPR = { INTEGER | FRACTION | VECTOR | MATRIX | "(" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
 pub fn parse_primary_expr(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR);
     let inner = pair.into_inner().next().unwrap();
@@ -221,7 +263,7 @@ pub fn parse_atom_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error
     Ok(expr)
 }
 
-// PRIMARY_EXPR_SHORT = { IDENTIFIER | INTEGER | FRACTION | "(" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ ")" }
+// PRIMARY_EXPR_SHORT = { INTEGER | FRACTION | "(" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
 pub fn parse_primary_expr_short(pair: Pair<Rule>) -> Result<PrimaryExpr_short, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR_SHORT);
     let inner = pair.into_inner().next().unwrap();
@@ -280,6 +322,13 @@ pub fn parse_postfix(pair: Pair<Rule>) -> Result<PostfixOp, pest::error::Error<R
    }
 }
 
+// INFIX_OPS = { WHITE_SPACE* ~ INFIX_OP ~ WHITE_SPACE*}
+pub fn parse_infix_ops(pair: Pair<Rule>) -> Result<InfixOp, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::INFIX_OPS);
+    let inner = pair.into_inner().next().unwrap();
+    parse_infix(inner)
+}
+
 // INFIX_OP = { "+" | "-" | "*" | "//" | "/" | "**" | "%" }
 pub fn parse_infix(pair: Pair<Rule>) -> Result<InfixOp, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::INFIX_OP);
@@ -319,24 +368,21 @@ fn parse_fraction(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Ru
 // MATRIX = { "Mat" ~ "[" ~ MATRIX_ROWS ~ "]" }
 fn parse_matrix(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::MATRIX);
+    let span = pair.as_span();
     let mut inner = pair.into_inner();
     // let _ = inner.next().unwrap();
-    let rows = inner.next().unwrap();
-    let matrix_rows = parse_matrix_rows(rows)?
-        .into_iter()
-        .map(|row| row.into_iter().map(|expr| match expr {
-            Expr::Primary(expr) => match *expr {
-                PrimaryExpr::Integer(bigint) => bigint,
-                _ => panic!("Expected integer in matrix row"),
-            },
-            _ => panic!("Expected integer in matrix row"),
-        }).collect())
-        .collect();
-    Ok(PrimaryExpr::Matrix(Matrix::from_vecvec(matrix_rows)))
+    let rows = parse_matrix_rows(inner.next().unwrap())?;
+    if !rows.iter().all(|row| row.len() == rows[0].len()) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Matrix rows must have the same length".to_string() },
+            span,
+        ));
+    }
+    Ok(PrimaryExpr::Matrix(rows))
 }
 
 // MATRIX_ROWS = { VECTOR_ROW ~ ("," ~ VECTOR_ROW)* }
-fn parse_matrix_rows(pair: Pair<Rule>) -> Result<Vec<Vec<Expr>>, pest::error::Error<Rule>> {
+fn parse_matrix_rows(pair: Pair<Rule>) -> Result<Vec<Vec<Expr_short>>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::MATRIX_ROWS);
     let mut inner = pair.into_inner();
     let mut vec = Vec::new();
@@ -353,18 +399,11 @@ fn parse_vector(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule
     // let _ = inner.next().unwrap();
     let rows = inner.next().unwrap();
     let exprs = parse_vector_row(rows)?;
-    let bigints = exprs.into_iter().map(|expr| match expr {
-        Expr::Primary(boxed_expr) => match *boxed_expr {
-            PrimaryExpr::Integer(bigint) => bigint,
-            _ => panic!("Expected integer in vector row"),
-        },
-        _ => panic!("Expected integer in vector row"),
-    }).collect();
-    Ok(PrimaryExpr::Vector(Vector::new(bigints)))
+    Ok(PrimaryExpr::Vector(exprs))
 }
 
-// VECTOR_ROW = { "[" ~ INTEGER ~ ("," ~ INTEGER)* ~ "]" }
-fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr>, pest::error::Error<Rule>> {
+// VECTOR_ROW = { "[" ~ WHITE_SPACE* ~ EXPR_SHORT ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR_SHORT)* ~ WHITE_SPACE* ~ "]" }
+fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr_short>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::VECTOR_ROW);
     let mut inner = pair.into_inner();
     // let _ = inner.next().unwrap();
@@ -372,7 +411,7 @@ fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr>, pest::error::Error<Ru
     let mut vec = Vec::new();
     while let Some(row) = inner.next() {
         // println!("parse_vector_row while: {:?}", row);
-        vec.push(Expr::Primary(Box::new(parse_integer(row)?)));
+        vec.push(parse_expr_short(row)?);
     }
     Ok(vec)
 }
@@ -405,11 +444,11 @@ mod tests {
         let pair = MrMathParser::parse(Rule::VECTOR, input).unwrap().next().unwrap();
         let result = parse_vector(pair).unwrap();
         println!("{:#?}", result);
-        assert_eq!(result, PrimaryExpr::Vector(Vector::new(vec![
-            BigInt::from("1".to_string()),
-            BigInt::from("2".to_string()),
-            BigInt::from("3".to_string()),
-        ])));
+        assert_eq!(result, PrimaryExpr::Vector(vec![
+            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("1".to_string()))),
+            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("2".to_string()))),
+            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("3".to_string()))),
+        ]));
     }
 
     #[test]
@@ -418,16 +457,16 @@ mod tests {
         let pair = MrMathParser::parse(Rule::MATRIX, input).unwrap().next().unwrap();
         let result = parse_matrix(pair).unwrap();
         println!("{:#?}", result);
-        assert_eq!(result, PrimaryExpr::Matrix(Matrix::new(vec![
-            Vector::new(vec![
-                BigInt::from("1".to_string()),
-                BigInt::from("2".to_string()),
-            ]),
-            Vector::new(vec![
-                BigInt::from("3".to_string()),
-                BigInt::from("4".to_string()),
-            ]),
-        ])));
+        assert_eq!(result, PrimaryExpr::Matrix(vec![
+            vec![
+                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("1".to_string()))),
+                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("2".to_string()))),
+            ],
+            vec![
+                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("3".to_string()))),
+                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("4".to_string()))),
+            ],
+        ]));
     }
 
     #[test]
@@ -446,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_parse_stmt() {
-        let input = "var x = Vec Vec[1, 2];";
+        let input = "var x = Vec[1, 2];";
         let pair = MrMathParser::parse(Rule::STMT, input).unwrap().next().unwrap();
         let result = parse_stmt(pair).unwrap();
         println!("{:#?}", result);
@@ -454,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_parse_complex_expr() {
-        let input = "Mat[ [1, 2], [3, 4]] * Vec[5, 6] + Frac[7, 8] - (9 + 10) ^T";
+        let input = "Mat[ [1 + 2, 2 / Frac[3, 4]], [3, 4]] * Vec[5, 6] + Frac[7, 8] - (9 + 10) ^T";
         let pair = MrMathParser::parse(Rule::EXPR, input).unwrap().next().unwrap();
         let result = parse_expr(pair).unwrap();
         println!("{:#?}", result);
