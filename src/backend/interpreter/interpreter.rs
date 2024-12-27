@@ -10,7 +10,7 @@ use crate::backend::bigint::{
 
 #[derive(Debug, Clone)]
 pub struct Env {
-    storage: HashMap<String, PrimaryExprReduced>,
+    storage: HashMap<String, StoredVar>,
     parent: Option<Box<Env>>,
 }
 
@@ -21,7 +21,7 @@ impl Env {
             parent: None,
         }
     }
-    pub fn from(store: HashMap<String, PrimaryExprReduced>) -> Self {
+    pub fn from(store: HashMap<String, StoredVar>) -> Self {
         Env {
             storage: store,
             parent: None,
@@ -35,16 +35,23 @@ impl Env {
     }
     pub fn get(&self, name: &str) -> Option<&PrimaryExprReduced> {
         match self.storage.get(name) {
-            Some(expr) => Some(expr),
+            Some(var) => Some(&var.expr),
             None => self.parent.as_ref().and_then(|parent| parent.get(name)),
         }
     }
-    pub fn set(&mut self, name: String, pexpr: PrimaryExprReduced) {
-        self.storage.insert(name, pexpr);
+    pub fn set(&mut self, name: String, pexpr: PrimaryExprReduced, _ty: Type) {
+        self.storage.insert(name, StoredVar{ ty: _ty, expr: pexpr });
     }
 
-    pub fn check(&self, name: &str) -> bool {
+    pub fn check_in(&self, name: &str) -> bool {
         self.storage.contains_key(name)
+    }
+
+    pub fn check_type(&self, name: &str, ty: Type) -> bool {
+        match self.storage.get(name) {
+            Some(var) => var.ty == ty,
+            None => false,
+        }
     }
 
     pub fn clear(&mut self) {
@@ -81,7 +88,7 @@ fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
         Stmt::Decl(decl) => {
             match decl {
                 Decl::Var(var) => {
-                    if env.check(&var.name) {
+                    if env.check_in(&var.name) {
                         println!("{}: {}", Red.paint("Error"), format!("Variable `{}` already exists", var.name));
                         return;
                     }
@@ -92,10 +99,10 @@ fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
                             return;
                         }
                     };
-                    env.set(var.name.clone(), result.clone());
+                    env.set(var.name.clone(), result.clone(), Type::Mutable );
                 }
                 Decl::Const(const_decl) => {
-                    if env.check(&const_decl.name) {
+                    if env.check_in(&const_decl.name) {
                         println!("{}: {}", Red.paint("Error"), format!("Constant `{}` already exists", const_decl.name));
                         return;
                     }
@@ -106,11 +113,19 @@ fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
                             return;
                         }
                     };
-                    env.set(const_decl.name.clone(), result);
+                    env.set(const_decl.name.clone(), result, Type::Immutable );
                 }
             }
         }
         Stmt::Assign(assign) => {
+            if !env.check_in(&assign.name) {
+                println!("{}: {}", Red.paint("Error"), format!("Variable/Constant `{}` does not exist", assign.name));
+                return;
+            }
+            if !env.check_type(&assign.name, Type::Mutable) {
+                println!("{}: {}", Red.paint("Error"), format!("Constant `{}` is not mutable", assign.name));
+                return;
+            }
             let result = match eval_expr(&assign.expr, env) {
                 Ok(result) => result,
                 Err(err) => {
@@ -118,7 +133,7 @@ fn interpret_stmt(stmt: &Stmt, env: &mut Env) {
                     return;
                 }
             };
-            env.set(assign.name.clone(), result);
+            env.set(assign.name.clone(), result, Type::Mutable );
         }
         Stmt::If(if_stmt) => {
             let cond = match eval_expr(&if_stmt.cond, env) {
@@ -694,14 +709,14 @@ mod tests {
     #[test]
     fn test_env_get_set() {
         let mut env = Env::new();
-        env.set("x".to_string(), PrimaryExprReduced::Integer(BigInt::from("42".to_string())));
+        env.set("x".to_string(), PrimaryExprReduced::Integer(BigInt::from("42".to_string())), Type::Mutable );
         assert_eq!(env.get("x"), Some(&PrimaryExprReduced::Integer(BigInt::from("42".to_string()))));
     }
 
     #[test]
     fn test_env_parent() {
         let mut parent_env = Env::new();
-        parent_env.set("x".to_string(), PrimaryExprReduced::Integer(BigInt::from("42".to_string())));
+        parent_env.set("x".to_string(), PrimaryExprReduced::Integer(BigInt::from("42".to_string())), Type::Mutable );
         let child_env = Env::new_with_parent(Box::new(parent_env));
         assert_eq!(child_env.get("x"), Some(&PrimaryExprReduced::Integer(BigInt::from("42".to_string()))));
     }

@@ -23,7 +23,7 @@ pub fn console() {
             "exit" | "quit" => break,
             "help" => help::help_info(),
             "history" => history::history_info(),
-            "clear" => print!("{esc}[2J{esc}[1;1H{msg}", esc = 27 as char, msg = Green.paint("Input `help` to get detailed info.\n\n")),
+            "clear" => println!("{esc}[2J{esc}[1;1HInput {msg} to get detailed info.\n", esc = 27 as char, msg = Green.paint("help")),
             "new" => {
                 env.clear();
                 println!("{}", Green.paint("New environment created!"));
