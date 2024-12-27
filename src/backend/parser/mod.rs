@@ -1,5 +1,6 @@
+use crate::frontend::check::check_keyword;
 use crate::backend::structure::ast::*;
-use crate::backend::bigint::{BigInt, matrix::{Matrix, Vector}};
+use crate::backend::bigint::BigInt;
 use pest_derive::Parser;
 use pest::{pratt_parser::PrattParser, Parser, iterators::Pair};
 
@@ -59,8 +60,9 @@ pub fn parse_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
         Rule::VAR_STMT => parse_var_stmt(inner),
+        Rule::CONST_STMT => parse_const_stmt(inner),
         Rule::EXPR_STMT => parse_expr_stmt(inner),
-        Rule::PRINT_STMT => parse_print_stmt(inner),
+        Rule::ASSIGN_STMT => parse_assign_stmt(inner),
         _ => panic!("Invalid statement"),
     }
 }
@@ -68,21 +70,63 @@ pub fn parse_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
 // VAR_STMT = { VAR ~ WHITE_SPACE* ~ IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
 pub fn parse_var_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::VAR_STMT);
+    let span = pair.as_span();
     let mut inner = pair.into_inner();
     let _ = inner.next().unwrap();
-    let id = inner.next().unwrap();
+    let id = inner.next().unwrap().as_str().to_string();
     // let ty =inner.next().unwrap();
     let expr = inner.next().unwrap();
+    if check_keyword(&id) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Invalid variable name, conflicting with KEYWORDS".to_string() },
+            span,
+        ));
+    }
     Ok(Stmt::Decl(Decl::Var(VarDecl {
-        name: id.as_str().to_string(),
+        name: id,
         // ty: parse_type(ty)?,
         expr: Box::new(parse_expr(expr)?),
     })))
 }
 
 // CONST_STMT = { CONST ~ WHITE_SPACE* ~ IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
-pub fn parse_const_stmt(pair: Pair<Rule>) -> Result<Stmt, String> {
-    todo!()
+pub fn parse_const_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::CONST_STMT);
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+    let _ = inner.next().unwrap();
+    let id = inner.next().unwrap().as_str().to_string();
+    // let ty =inner.next().unwrap();
+    let expr = inner.next().unwrap();
+    if check_keyword(&id) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Invalid variable name, conflicting with KEYWORDS".to_string() },
+            span,
+        ));
+    }
+    Ok(Stmt::Decl(Decl::Const(ConstDecl {
+        name: id,
+        // ty: parse_type(ty)?,
+        expr: Box::new(parse_expr(expr)?),
+    })))
+}
+
+// ASSIGN_STMT = { IDENTIFIER ~ WHITE_SPACE* ~ "=" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ";" }
+pub fn parse_assign_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::ASSIGN_STMT);
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+    let id = inner.next().unwrap().as_str().to_string();
+    if check_keyword(&id) {
+        return Err(pest::error::Error::new_from_span(
+            pest::error::ErrorVariant::CustomError { message: "Invalid variable name, conflicting with KEYWORDS".to_string() },
+            span,
+        ));
+    }
+    Ok(Stmt::Assign(Assign {
+        name: id,
+        expr: Box::new(parse_expr(inner.next().unwrap())?),
+    }))
 }
 
 // EXPR_STMT = { EXPR ~ WHITE_SPACE* }

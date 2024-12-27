@@ -1,0 +1,7 @@
+exit
+quit
+help
+history
+clear
+new
+man

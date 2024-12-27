@@ -13,7 +13,8 @@ pub fn intro_info() {
 │                                                                    │
 │         Welcome to {} Calculator!        │
 └────────────────────────────────────────────────────────────────────┘
-", 27 as char, 27 as char, Yellow.paint(format!("My Rust Math (MrMath {})", VERSION)));
+{}
+", 27 as char, 27 as char, Yellow.paint(format!("My Rust Math (MrMath {})", VERSION)), Green.paint("Input `help` to get detailed info."));
 }
 
 pub fn bye_info() {

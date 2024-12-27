@@ -214,14 +214,14 @@ pub struct VarDecl {
 #[derive(PartialEq, Clone, Debug)]
 pub struct ConstDecl {
     pub name: String,
-    pub ty: Type,
+    // pub ty: Type,
     pub expr: Box<Expr>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Assign {
-    pub lhs: String,
-    pub rhs: Box<Expr>,
+    pub name: String,
+    pub expr: Box<Expr>,
 }
 
 #[derive(PartialEq, Clone, Debug)]
