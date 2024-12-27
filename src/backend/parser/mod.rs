@@ -143,19 +143,6 @@ pub fn parse_print_stmt(pair: Pair<Rule>) -> Result<Stmt, pest::error::Error<Rul
     Ok(Stmt::Expr(parse_expr(expr)?))
 }
 
-// TYPE = { INT_TYPE | FRAC_TYPE | VECTOR_TYPE | MATRIX_TYPE }
-pub fn parse_type(pair: Pair<Rule>) -> Result<Type, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::TYPE);
-    let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::INT_TYPE => Ok(Type::Int),
-        Rule::FRAC_TYPE => Ok(Type::Frac),
-        Rule::VECTOR_TYPE => Ok(Type::Vector),
-        Rule::MATRIX_TYPE => Ok(Type::Matrix),
-        _ => panic!("Invalid type"),
-    }
-}
-
 // EXPR = { ATOM_EXPR ~ (INFIX_OPS ~ ATOM_EXPR)*  }
 pub fn parse_expr(pair: Pair<Rule>) -> Result<Expr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::EXPR);

@@ -100,20 +100,6 @@ pub enum PrimaryExpr_short {
     Expr(Box<Expr_short>),
 }
 
-impl PrimaryExpr {
-    pub fn get_type(&self) -> Type {
-        match self {
-            PrimaryExpr::Integer(_) => Type::Int,
-            PrimaryExpr::Fraction(_, _) => Type::Frac,
-            PrimaryExpr::Vector(_) => Type::Vector,
-            PrimaryExpr::Matrix(_) => Type::Matrix,
-            PrimaryExpr::Expr(_) => panic!("PrimaryExpr::Expr should not be used"),
-            PrimaryExpr::Boolean(_) => panic!("PrimaryExpr::Boolean should not be used temporarily"),
-            PrimaryExpr::Ident(_) => panic!("PrimaryExpr::Ident should not be used")
-        }
-    }
-}
-
 #[derive(PartialEq, Clone, Debug)]
 pub enum PrefixOp {
     Neg,
@@ -189,13 +175,22 @@ pub struct PostfixExpr_short {
     pub op: PostfixOp,
 }
 
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct StoredVar {
+    pub ty: Type,
+    pub expr: PrimaryExprReduced,
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum Type {
-    Bool,
-    Int,
-    Frac,
-    Vector,
-    Matrix,
+    Mutable,
+    Immutable,
+    // Unit,
+    // UnitType,
+    // Never,
+    // Unknown,
+    // Any
 }
 
 #[derive(PartialEq, Clone, Debug)]
