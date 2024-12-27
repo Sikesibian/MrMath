@@ -1,0 +1,10 @@
+`Variable`:
+  Expr:
+    `var <Name> = <Value>;`
+  Example:
+    `var x = 10;`
+    `var y = x + 5;`
+  Note:
+    - <Name> can only contain `letters, numbers, and underscores`, and must `start with a letter`.
+    - <Value> can be any valid expression like `3`, `-5`, `Vec[1, 2, 3]`, `Frac[2, 5]`, `x + 1`.
+    - <Value> can be `a variable name or its expression`, but it must `be declared before it is used`.
