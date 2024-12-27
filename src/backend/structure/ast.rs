@@ -87,7 +87,10 @@ impl From<PrimaryExprReduced> for PrimaryExprReduced_short {
             PrimaryExprReduced::Ident(s) => PrimaryExprReduced_short::Ident(s),
             PrimaryExprReduced::Integer(i) => PrimaryExprReduced_short::Integer(i),
             PrimaryExprReduced::Fraction(f) => PrimaryExprReduced_short::Fraction(f),
-            _ => panic!("PrimaryExprReduced::from should not be used"),
+            _ => {
+                eprintln!("{} should not be used here in this way", expr.to_string());
+                PrimaryExprReduced_short::Ident("".to_string())
+            }
         }
     }
 }
