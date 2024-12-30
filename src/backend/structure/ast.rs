@@ -31,15 +31,6 @@ pub enum Expr {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum Expr_short {
-    PrimaryShort(PrimaryExpr_short),
-    Prefix(Box<PrefixExpr_short>),
-    Infix(Box<InfixExpr_short>),
-    Postfix(Box<PostfixExpr_short>),
-    Reduced(Box<PrimaryExprReduced_short>),
-}
-
-#[derive(PartialEq, Clone, Debug)]
 pub enum PrimaryExprReduced {
     Ident(String),
     Integer(BigInt),
@@ -57,7 +48,6 @@ impl PrimaryExprReduced {
             PrimaryExprReduced::Fraction(f) => f.to_string(),
             PrimaryExprReduced::Vector(v) => v.to_string(),
             PrimaryExprReduced::Matrix(m)=> m.to_string(),
-            // PrimaryExprReduced::Boolean(b) => b.to_string(),
             _ => panic!("PrimaryExprReduced::to_string should not be used"),
         }
     }
@@ -67,40 +57,11 @@ impl PrimaryExprReduced {
 pub enum PrimaryExpr {
     Ident(String),
     Integer(BigInt),
-    Fraction(Box<Expr_short>, Box<Expr_short>),
-    Vector(Vec<Expr_short>),
-    Matrix(Vec<Vec<Expr_short>>),
+    Fraction(Box<Expr>, Box<Expr>),
+    Vector(Vec<Expr>),
+    Matrix(Vec<Vec<Expr>>),
     Expr(Box<Expr>),
     Boolean(bool),
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum PrimaryExprReduced_short {
-    Ident(String),
-    Integer(BigInt),
-    Fraction(Fraction),
-}
-
-impl From<PrimaryExprReduced> for PrimaryExprReduced_short {
-    fn from(expr: PrimaryExprReduced) -> Self {
-        match expr {
-            PrimaryExprReduced::Ident(s) => PrimaryExprReduced_short::Ident(s),
-            PrimaryExprReduced::Integer(i) => PrimaryExprReduced_short::Integer(i),
-            PrimaryExprReduced::Fraction(f) => PrimaryExprReduced_short::Fraction(f),
-            _ => {
-                eprintln!("{} should not be used here in this way", expr.to_string());
-                PrimaryExprReduced_short::Ident("".to_string())
-            }
-        }
-    }
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum PrimaryExpr_short {
-    Ident(String),
-    Integer(BigInt),
-    Fraction(Box<Expr_short>, Box<Expr_short>),
-    Expr(Box<Expr_short>),
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -158,26 +119,6 @@ pub struct PostfixExpr {
     pub expr: Box<Expr>,
     pub op: PostfixOp,
 }
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct PrefixExpr_short {
-    pub op: PrefixOp,
-    pub expr: Box<Expr_short>,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct InfixExpr_short {
-    pub lhs: Box<Expr_short>,
-    pub op: InfixOp,
-    pub rhs: Box<Expr_short>,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct PostfixExpr_short {
-    pub expr: Box<Expr_short>,
-    pub op: PostfixOp,
-}
-
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct StoredVar {

@@ -23,6 +23,18 @@ impl IntoVectorElement for Fraction {
     }
 }
 
+impl From<BigInt> for VectorElement {
+    fn from(x: BigInt) -> VectorElement {
+        VectorElement::BigInt(x)
+    }
+}
+
+impl From<Fraction> for VectorElement {
+    fn from(x: Fraction) -> VectorElement {
+        VectorElement::Fraction(x)
+    }
+}
+
 impl Neg for VectorElement {
     type Output = VectorElement;
 
