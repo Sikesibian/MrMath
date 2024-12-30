@@ -189,7 +189,7 @@ pub fn parse_atom_expr(pair: Pair<Rule>) -> Result<Expr, pest::error::Error<Rule
     Ok(expr)
 }
 
-// PRIMARY_EXPR = { INTEGER | FRACTION | VECTOR | MATRIX | "(" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
+// PRIMARY_EXPR = { INTEGER | FRACTION | VECTOR | MATRIX | POLYNOMIAL | "(" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
 pub fn parse_primary_expr(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR);
     let inner = pair.into_inner().next().unwrap();
@@ -200,70 +200,6 @@ pub fn parse_primary_expr(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::
         Rule::VECTOR => parse_vector(inner),
         Rule::MATRIX => parse_matrix(inner),
         Rule::EXPR => Ok(PrimaryExpr::Expr(Box::new(parse_expr(inner)?))),
-        _ => panic!("Invalid primary expression"),
-    }
-}
-
-// EXPR_SHORT = { ATOM_EXPR_SHORT ~ (INFIX_OPS ~ ATOM_EXPR_SHORT)*  }
-pub fn parse_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::EXPR_SHORT);
-    let mut inner = pair.into_inner();
-    let first_expr = parse_atom_expr_short(inner.next().unwrap())?;
-    let mut expr = first_expr;
-
-    while let Some(op) = inner.next() {
-        let infix_op = parse_infix_ops(op)?;
-        let next_expr = parse_atom_expr_short(inner.next().unwrap())?;
-        expr = Expr_short::Infix(Box::new(InfixExpr_short {
-            lhs: Box::new(expr),
-            op: infix_op,
-            rhs: Box::new(next_expr),
-        }));
-    }
-
-    Ok(expr)
-}
-
-// ATOM_EXPR_SHORT = { PREFIX_OPS ~ PRIMARY_EXPR ~ POSTFIX_OPS }
-pub fn parse_atom_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::ATOM_EXPR_SHORT);
-    let mut inner = pair.into_inner();
-    let prefix_ops = parse_prefix_ops(inner.next().unwrap())?;
-    let primary_expr = parse_primary_expr_short(inner.next().unwrap())?;
-    let postfix_ops = parse_postfix_ops(inner.next().unwrap())?;
-    let mut expr = Expr_short::PrimaryShort(primary_expr);
-    
-    for op in postfix_ops {
-        expr = Expr_short::Postfix(Box::new(PostfixExpr_short {
-            expr: Box::new(expr),
-            op,
-        }));
-    }
-
-    for op in prefix_ops.into_iter().rev() {
-        expr = Expr_short::Prefix(Box::new(PrefixExpr_short {
-            op,
-            expr: Box::new(expr),
-        }));
-    }
-    
-    Ok(expr)
-}
-
-// PRIMARY_EXPR_SHORT = { INTEGER | FRACTION | "(" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
-pub fn parse_primary_expr_short(pair: Pair<Rule>) -> Result<PrimaryExpr_short, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR_SHORT);
-    let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::IDENTIFIER => Ok(PrimaryExpr_short::Ident(inner.as_str().to_string())),
-        Rule::INTEGER => Ok(PrimaryExpr_short::Integer(BigInt::from(inner.as_str().parse::<i64>().unwrap().to_string()))),
-        Rule::FRACTION => {
-            let mut inner = inner.into_inner();
-            let num = parse_expr_short(inner.next().unwrap())?;
-            let denom = parse_expr_short(inner.next().unwrap())?;
-            Ok(PrimaryExpr_short::Fraction(Box::new(num), Box::new(denom)))
-        },
-        Rule::EXPR_SHORT => Ok(PrimaryExpr_short::Expr(Box::new(parse_expr_short(inner)?))),
         _ => panic!("Invalid primary expression"),
     }
 }
@@ -343,12 +279,12 @@ fn parse_integer(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rul
     Ok(PrimaryExpr::Integer(BigInt::from(pair.as_str().parse::<i64>().unwrap().to_string())))
 }
 
-// FRACTION = { "Frac" ~ "[" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ "]" }
+// FRACTION = { "Frac" ~ "[" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ "]" }
 fn parse_fraction(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::FRACTION);
     let mut inner = pair.into_inner();
-    let num = parse_expr_short(inner.next().unwrap())?;
-    let denom = parse_expr_short(inner.next().unwrap())?;
+    let num = parse_expr(inner.next().unwrap())?;
+    let denom = parse_expr(inner.next().unwrap())?;
     Ok(PrimaryExpr::Fraction(Box::new(num), Box::new(denom)))
 }
 
@@ -369,7 +305,7 @@ fn parse_matrix(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule
 }
 
 // MATRIX_ROWS = { VECTOR_ROW ~ ("," ~ VECTOR_ROW)* }
-fn parse_matrix_rows(pair: Pair<Rule>) -> Result<Vec<Vec<Expr_short>>, pest::error::Error<Rule>> {
+fn parse_matrix_rows(pair: Pair<Rule>) -> Result<Vec<Vec<Expr>>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::MATRIX_ROWS);
     let mut inner = pair.into_inner();
     let mut vec = Vec::new();
@@ -389,8 +325,8 @@ fn parse_vector(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule
     Ok(PrimaryExpr::Vector(exprs))
 }
 
-// VECTOR_ROW = { "[" ~ WHITE_SPACE* ~ EXPR_SHORT ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR_SHORT)* ~ WHITE_SPACE* ~ "]" }
-fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr_short>, pest::error::Error<Rule>> {
+// VECTOR_ROW = { "[" ~ WHITE_SPACE* ~ EXPR ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR)* ~ WHITE_SPACE* ~ "]" }
+fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::VECTOR_ROW);
     let mut inner = pair.into_inner();
     // let _ = inner.next().unwrap();
@@ -398,7 +334,7 @@ fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr_short>, pest::error::Er
     let mut vec = Vec::new();
     while let Some(row) = inner.next() {
         // println!("parse_vector_row while: {:?}", row);
-        vec.push(parse_expr_short(row)?);
+        vec.push(parse_expr(row)?);
     }
     Ok(vec)
 }
@@ -427,15 +363,19 @@ mod tests {
 
     #[test]
     fn test_parse_vector() {
-        let input = "Vec[1,2 ,3]";
+        let input = "Vec[1, 2 ,3]";
         let pair = MrMathParser::parse(Rule::VECTOR, input).unwrap().next().unwrap();
         let result = parse_vector(pair).unwrap();
         println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Vector(vec![
-            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("1".to_string()))),
-            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("2".to_string()))),
-            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("3".to_string()))),
+            Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("1".to_string())))),
+            Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string())))),
+            Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("3".to_string())))),
         ]));
+        let input = "Vec[1,Vec[1] * Vec[1] ,3]";
+        let pair = MrMathParser::parse(Rule::VECTOR, input).unwrap().next().unwrap();
+        let result = parse_vector(pair).unwrap();
+        println!("{:#?}", result);
     }
 
     #[test]
@@ -446,12 +386,12 @@ mod tests {
         println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Matrix(vec![
             vec![
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("1".to_string()))),
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("2".to_string()))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("1".to_string())))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string())))),
             ],
             vec![
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("3".to_string()))),
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("4".to_string()))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("3".to_string())))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("4".to_string())))),
             ],
         ]));
     }

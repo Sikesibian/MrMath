@@ -72,13 +72,6 @@ impl Ord for BigInt {
     }
 }
 
-impl Neg for BigInt {
-    type Output = Self;
-    fn neg(self) -> Self {
-        BigInt { digits: self.digits, sign: !self.sign }
-    }
-}
-
 impl From<String> for BigInt {
     fn from(mut s: String) -> Self {
         let mut digits = Vec::new();
@@ -91,6 +84,13 @@ impl From<String> for BigInt {
         }
         digits.reverse();
         BigInt { digits, sign: false }
+    }
+}
+
+impl Neg for BigInt {
+    type Output = Self;
+    fn neg(self) -> Self {
+        BigInt { digits: self.digits, sign: !self.sign }
     }
 }
 
@@ -610,7 +610,6 @@ mod tests {
         assert_eq!(e.digits, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 
-    // factorial
     #[test]
     fn test_factorial() {
         let a = BigInt { digits: vec![0, 1], sign: false };
