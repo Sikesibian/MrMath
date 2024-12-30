@@ -1,7 +1,9 @@
 use crate::backend::bigint::BigInt;
 use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::cmp::Ordering;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+
+#[derive(Debug, Clone)]
 pub struct Fraction {
     numerator: BigInt,
     denominator: BigInt,
@@ -38,6 +40,45 @@ impl Fraction {
         self
     }
 }
+
+impl PartialEq<Fraction> for Fraction {
+    fn eq(&self, other: &Self) -> bool {
+        self.numerator.clone() * other.denominator.clone() == self.denominator.clone() * other.numerator.clone()
+    }
+}
+
+impl PartialEq<BigInt> for Fraction {
+    fn eq(&self, other: &BigInt) -> bool {
+        self.numerator.clone() == other.clone() * self.denominator.clone()
+    }
+}
+
+impl PartialOrd<Fraction> for Fraction {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.denominator.clone() == other.denominator.clone() {
+            self.numerator.partial_cmp(&other.numerator)
+        }
+        else {
+            let numerator = self.numerator.clone() * other.denominator.clone();
+            let other_numerator = other.numerator.clone() * self.denominator.clone();
+            numerator.partial_cmp(&other_numerator)
+        }
+    }
+}
+
+impl PartialOrd<BigInt> for Fraction {
+    fn partial_cmp(&self, other: &BigInt) -> Option<Ordering> {
+        if self.denominator == BigInt::one() {
+            self.numerator.partial_cmp(other)
+        }
+        else {
+            let numerator = self.numerator.clone() * other.clone();
+            numerator.partial_cmp(&self.denominator)
+       }
+    }
+}
+
+impl Eq for Fraction {}
 
 impl Add for Fraction {
     type Output = Fraction;
@@ -191,5 +232,27 @@ impl Fraction {
 
     pub fn one() -> Fraction {
         Fraction::new(BigInt::one(), BigInt::one())
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.numerator == BigInt::zero()
+    }
+
+    pub fn pow(&self, exponent: BigInt) -> Fraction {
+        if exponent == BigInt::zero() {
+            Fraction::one()
+        }
+        else if exponent == BigInt::one() {
+            self.clone()
+        }
+        else if exponent.sign {
+            Fraction::new(self.numerator.clone().pow(exponent.clone().abs()), self.denominator.clone().pow(exponent.clone().abs()))
+        }
+        else {
+            Fraction::new(
+                self.numerator.clone().pow(exponent.clone()),
+                self.denominator.clone().pow(exponent.clone())
+            )
+        }
     }
 }

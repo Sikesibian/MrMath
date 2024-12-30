@@ -1,8 +1,9 @@
 pub mod fraction;
 pub mod matrix;
+pub mod polynomial;
 
 use std::cmp::Ordering;
-use std::ops::{Add, Sub, Mul, Div, Rem, Neg};
+use std::ops::{Add, Sub, Mul, Div, Rem, Neg, Not};
 
 use fraction::Fraction;
 
@@ -267,6 +268,13 @@ impl Rem for BigInt {
     }
 }
 
+impl Not for BigInt {
+    type Output = Self;
+    fn not(self) -> Self {
+        BigInt { digits: self.digits.iter().map(|x| !x).collect(), sign: !self.sign }
+    }
+}
+
 impl BigInt {
     pub fn zero() -> Self {
         BigInt { digits: vec![0], sign: false }
@@ -284,18 +292,36 @@ impl BigInt {
         }
         return Fraction::new(self, other);
     }
+    pub fn pow(self, exp: Self) -> Self
+    where
+        Self: Clone + Mul<Output = Self> + PartialOrd + From<BigInt> + PartialEq,
+    {
+        let zero = Self::zero();
+        let one = Self::one();
+        let two = BigInt { digits: vec![2], sign: false };
+        if self.is_zero() {
+            println!("Cannot raise zero to a negative power");
+            return zero;
+        }
+        if exp < zero {
+            println!("Exponent must be non-negative");
+            return zero;
+        }
 
-    pub fn pow(self, exp: u32) -> Self {
+        if exp == zero {
+            return one;
+        }
+
         let mut base = self;
         let mut exp = exp;
-        let mut result = BigInt::one();
+        let mut result = one.clone();
 
-        while exp > 0 {
-            if exp % 2 == 1 {
-            result = result * base.clone();
+        while exp.clone() > zero {
+            if exp.clone() % two.clone() == one {
+                result = result * base.clone();
             }
-            base = base.clone() * base;
-            exp /= 2;
+            base = base.clone() * base.clone();
+            exp = exp / two.clone();
         }
 
         result
@@ -496,11 +522,12 @@ mod tests {
     #[test]
     fn test_pow() {
         let a = BigInt { digits: vec![2, 2], sign: false };
-        let result = a.pow(3);
+        let b = BigInt { digits: vec![3], sign: false };
+        let result = a.pow(b.clone());
         assert_eq!(result.digits, vec![8, 4, 6, 0, 1]);
         assert_eq!(result.sign, false);
         let a = BigInt { digits: vec![2, 2], sign: true };
-        let result = a.pow(3);
+        let result = a.pow(b);
         assert_eq!(result.digits, vec![8, 4, 6, 0, 1]);
         assert_eq!(result.sign, true);
     }

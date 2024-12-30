@@ -13,6 +13,11 @@ lazy_static::lazy_static! {
         use pest::pratt_parser::{Op, Assoc::*};
         // Precedence : low to high
         PrattParser::new()
+        .op(Op::prefix(Rule::BINARY_NOT))
+        .op(Op::prefix(Rule::LOGICAL_NOT))
+        .op(Op::infix(Rule::BINARY_OP, Left))
+        .op(Op::infix(Rule::LOGICAL_OP, Left))
+        .op(Op::infix(Rule::EQ_OP, Left))
         .op(Op::infix(Rule::ADD_OP, Left))
         .op(Op::infix(Rule::MUL_OP, Left))
         .op(Op::infix(Rule::MOD_OP, Left))
@@ -189,82 +194,27 @@ pub fn parse_atom_expr(pair: Pair<Rule>) -> Result<Expr, pest::error::Error<Rule
     Ok(expr)
 }
 
-// PRIMARY_EXPR = { INTEGER | FRACTION | VECTOR | MATRIX | "(" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
+// PRIMARY_EXPR = { INTEGER | FRACTION | VECTOR | MATRIX | POLYNOMIAL | "(" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
 pub fn parse_primary_expr(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR);
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
+        Rule::BOOL => parse_bool(inner),
         Rule::IDENTIFIER => parse_identifier(inner),
         Rule::INTEGER => parse_integer(inner),
         Rule::FRACTION => parse_fraction(inner),
         Rule::VECTOR => parse_vector(inner),
         Rule::MATRIX => parse_matrix(inner),
+        // Rule::POLYNOMIAL => parse_polynomial(inner),
         Rule::EXPR => Ok(PrimaryExpr::Expr(Box::new(parse_expr(inner)?))),
-        _ => panic!("Invalid primary expression"),
-    }
-}
-
-// EXPR_SHORT = { ATOM_EXPR_SHORT ~ (INFIX_OPS ~ ATOM_EXPR_SHORT)*  }
-pub fn parse_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::EXPR_SHORT);
-    let mut inner = pair.into_inner();
-    let first_expr = parse_atom_expr_short(inner.next().unwrap())?;
-    let mut expr = first_expr;
-
-    while let Some(op) = inner.next() {
-        let infix_op = parse_infix_ops(op)?;
-        let next_expr = parse_atom_expr_short(inner.next().unwrap())?;
-        expr = Expr_short::Infix(Box::new(InfixExpr_short {
-            lhs: Box::new(expr),
-            op: infix_op,
-            rhs: Box::new(next_expr),
-        }));
-    }
-
-    Ok(expr)
-}
-
-// ATOM_EXPR_SHORT = { PREFIX_OPS ~ PRIMARY_EXPR ~ POSTFIX_OPS }
-pub fn parse_atom_expr_short(pair: Pair<Rule>) -> Result<Expr_short, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::ATOM_EXPR_SHORT);
-    let mut inner = pair.into_inner();
-    let prefix_ops = parse_prefix_ops(inner.next().unwrap())?;
-    let primary_expr = parse_primary_expr_short(inner.next().unwrap())?;
-    let postfix_ops = parse_postfix_ops(inner.next().unwrap())?;
-    let mut expr = Expr_short::PrimaryShort(primary_expr);
-    
-    for op in postfix_ops {
-        expr = Expr_short::Postfix(Box::new(PostfixExpr_short {
-            expr: Box::new(expr),
-            op,
-        }));
-    }
-
-    for op in prefix_ops.into_iter().rev() {
-        expr = Expr_short::Prefix(Box::new(PrefixExpr_short {
-            op,
-            expr: Box::new(expr),
-        }));
-    }
-    
-    Ok(expr)
-}
-
-// PRIMARY_EXPR_SHORT = { INTEGER | FRACTION | "(" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ ")" | IDENTIFIER }
-pub fn parse_primary_expr_short(pair: Pair<Rule>) -> Result<PrimaryExpr_short, pest::error::Error<Rule>> {
-    assert_eq!(pair.as_rule(), Rule::PRIMARY_EXPR_SHORT);
-    let inner = pair.into_inner().next().unwrap();
-    match inner.as_rule() {
-        Rule::IDENTIFIER => Ok(PrimaryExpr_short::Ident(inner.as_str().to_string())),
-        Rule::INTEGER => Ok(PrimaryExpr_short::Integer(BigInt::from(inner.as_str().parse::<i64>().unwrap().to_string()))),
-        Rule::FRACTION => {
-            let mut inner = inner.into_inner();
-            let num = parse_expr_short(inner.next().unwrap())?;
-            let denom = parse_expr_short(inner.next().unwrap())?;
-            Ok(PrimaryExpr_short::Fraction(Box::new(num), Box::new(denom)))
+        _ => {
+            return Err(
+                pest::error::Error::new_from_span(
+                    pest::error::ErrorVariant::CustomError { message: format!("Unexpected rule: {}", inner.as_str()) },
+                    inner.as_span(),
+                )
+            );
         },
-        Rule::EXPR_SHORT => Ok(PrimaryExpr_short::Expr(Box::new(parse_expr_short(inner)?))),
-        _ => panic!("Invalid primary expression"),
     }
 }
 
@@ -278,14 +228,21 @@ pub fn parse_prefix_ops(pair: Pair<Rule>) -> Result<Vec<PrefixOp>, pest::error::
     Ok(ops)
 }
 
-// PREFIX_OP = { "abs" | "+" | "-" }
+// PREFIX_OP = { "abs" | "+" | "-" | "~" | "not" }
 pub fn parse_prefix(pair: Pair<Rule>) -> Result<PrefixOp, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::PREFIX_OP);
     match pair.as_str() {
         "abs" => Ok(PrefixOp::Abs),
         "+" => Ok(PrefixOp::Pos),
         "-" => Ok(PrefixOp::Neg),
-        _ => panic!("Invalid prefix operator"),
+        "~" => Ok(PrefixOp::BitNot),
+        "not" => Ok(PrefixOp::Not),
+        _ => {
+            return Err(pest::error::Error::new_from_span(
+                pest::error::ErrorVariant::CustomError { message: "Invalid prefix operator".to_string() },
+                pair.as_span(),
+            ));
+        },
     }
 }
 
@@ -305,7 +262,12 @@ pub fn parse_postfix(pair: Pair<Rule>) -> Result<PostfixOp, pest::error::Error<R
     match pair.as_str() {
         "!" => Ok(PostfixOp::Factorial),
         "^T" => Ok(PostfixOp::Transpose),
-        _ => panic!("Invalid postfix operator"),
+        _ => {
+            return Err(pest::error::Error::new_from_span(
+                pest::error::ErrorVariant::CustomError { message: "Invalid postfix operator".to_string() },
+                pair.as_span(),
+            ));
+        },
    }
 }
 
@@ -316,18 +278,46 @@ pub fn parse_infix_ops(pair: Pair<Rule>) -> Result<InfixOp, pest::error::Error<R
     parse_infix(inner)
 }
 
-// INFIX_OP = { "+" | "-" | "*" | "//" | "/" | "**" | "%" }
+// INFIX_OP = { BINARY_OP | MOD_OP | MUL_OP | ADD_OP }
+// BINARY_OP = { BOOL_OP | LOGICAL_OP | EQ_OP }
+// BOOL_OP = { "&" | "|" | "^" | "~&" | "~|" | "~^" }
+// LOGICAL_OP = { "and" | "or" }
+// EQ_OP = { "==" | "!=" | "<" | "<=" | ">" | ">=" }
+// MOD_OP = { "%" | "**" }
+// MUL_OP = { "*" | "//" | "/" }
+// ADD_OP = { "+" | "-" }
 pub fn parse_infix(pair: Pair<Rule>) -> Result<InfixOp, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::INFIX_OP);
     match pair.as_str() {
-        "+" => Ok(InfixOp::Add),
-        "-" => Ok(InfixOp::Sub),
-        "*" => Ok(InfixOp::Mul),
-        "//" => Ok(InfixOp::Div0),
-        "/" => Ok(InfixOp::Div1),
-        "**" => Ok(InfixOp::Pow),
-        "%" => Ok(InfixOp::Mod),
-        _ => panic!("Invalid infix operator"),
+        "+" => Ok(InfixOp::Add), "-" => Ok(InfixOp::Sub),
+        "*" => Ok(InfixOp::Mul), "//" => Ok(InfixOp::Div0), "/" => Ok(InfixOp::Div1),
+        "**" => Ok(InfixOp::Pow), "%" => Ok(InfixOp::Mod),
+        "==" => Ok(InfixOp::Eq), "!=" => Ok(InfixOp::Ne), "<" => Ok(InfixOp::Lt), "<=" => Ok(InfixOp::Le),
+        ">" => Ok(InfixOp::Gt), ">=" => Ok(InfixOp::Ge), "and" => Ok(InfixOp::And), "or" => Ok(InfixOp::Or),
+        "&" => Ok(InfixOp::BitAnd), "|" => Ok(InfixOp::BitOr), "^" => Ok(InfixOp::BitXor),
+        "~&" => Ok(InfixOp::BitNand), "~|" => Ok(InfixOp::BitNor), "~^" => Ok(InfixOp::BitNxor),
+        _ => {
+            Err(pest::error::Error::new_from_span(
+                pest::error::ErrorVariant::CustomError { message: "Invalid infix operator".to_string() },
+                pair.as_span(),
+            ))
+        },
+    }
+}
+
+// BOOL = { "True" | "False" | "None" }
+pub fn parse_bool(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
+    assert_eq!(pair.as_rule(), Rule::BOOL);
+    match pair.as_str() {
+        "True" | "true" => Ok(PrimaryExpr::Boolean(true)),
+        "False" | "false" => Ok(PrimaryExpr::Boolean(false)),
+        "None" | "none" => Ok(PrimaryExpr::None),
+        _ => {
+            return Err(pest::error::Error::new_from_span(
+                pest::error::ErrorVariant::CustomError { message: "Invalid boolean literal".to_string() },
+                pair.as_span()
+            ));
+        },
     }
 }
 
@@ -343,12 +333,12 @@ fn parse_integer(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rul
     Ok(PrimaryExpr::Integer(BigInt::from(pair.as_str().parse::<i64>().unwrap().to_string())))
 }
 
-// FRACTION = { "Frac" ~ "[" ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR_SHORT ~ WHITE_SPACE* ~ "]" }
+// FRACTION = { "Frac" ~ "[" ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR ~ WHITE_SPACE* ~ "]" }
 fn parse_fraction(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::FRACTION);
     let mut inner = pair.into_inner();
-    let num = parse_expr_short(inner.next().unwrap())?;
-    let denom = parse_expr_short(inner.next().unwrap())?;
+    let num = parse_expr(inner.next().unwrap())?;
+    let denom = parse_expr(inner.next().unwrap())?;
     Ok(PrimaryExpr::Fraction(Box::new(num), Box::new(denom)))
 }
 
@@ -369,7 +359,7 @@ fn parse_matrix(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule
 }
 
 // MATRIX_ROWS = { VECTOR_ROW ~ ("," ~ VECTOR_ROW)* }
-fn parse_matrix_rows(pair: Pair<Rule>) -> Result<Vec<Vec<Expr_short>>, pest::error::Error<Rule>> {
+fn parse_matrix_rows(pair: Pair<Rule>) -> Result<Vec<Vec<Expr>>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::MATRIX_ROWS);
     let mut inner = pair.into_inner();
     let mut vec = Vec::new();
@@ -389,8 +379,8 @@ fn parse_vector(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule
     Ok(PrimaryExpr::Vector(exprs))
 }
 
-// VECTOR_ROW = { "[" ~ WHITE_SPACE* ~ EXPR_SHORT ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR_SHORT)* ~ WHITE_SPACE* ~ "]" }
-fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr_short>, pest::error::Error<Rule>> {
+// VECTOR_ROW = { "[" ~ WHITE_SPACE* ~ EXPR ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR)* ~ WHITE_SPACE* ~ "]" }
+fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr>, pest::error::Error<Rule>> {
     assert_eq!(pair.as_rule(), Rule::VECTOR_ROW);
     let mut inner = pair.into_inner();
     // let _ = inner.next().unwrap();
@@ -398,10 +388,23 @@ fn parse_vector_row(pair: Pair<Rule>) -> Result<Vec<Expr_short>, pest::error::Er
     let mut vec = Vec::new();
     while let Some(row) = inner.next() {
         // println!("parse_vector_row while: {:?}", row);
-        vec.push(parse_expr_short(row)?);
+        vec.push(parse_expr(row)?);
     }
     Ok(vec)
 }
+
+// // POLYNOMIAL = { "Poly" ~ WHITE_SPACE* ~ "[" ~ WHITE_SPACE* ~ IDENTIFIER ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ IDENTIFIER)* ~ WHITE_SPACE* ~ ":" ~ WHITE_SPACE* ~ EXPR ~ (WHITE_SPACE* ~ "," ~ WHITE_SPACE* ~ EXPR)* ~ WHITE_SPACE* ~ "]" }
+// fn parse_polynomial(pair: Pair<Rule>) -> Result<PrimaryExpr, pest::error::Error<Rule>> {
+//     assert_eq!(pair.as_rule(), Rule::POLYNOMIAL);
+//     let mut inner = pair.into_inner();
+//     let var = parse_identifier(inner.next().unwrap())?;
+//     let mut coeffs = Vec::new();
+//     while let Some(coeff) = inner.next() {
+//         // println!("parse_vector_row while: {:?}", row);
+//         coeffs.push(parse_expr(coeff)?);
+//     }
+//     Ok(PrimaryExpr::Polynomial(Box::new(var), Box::new(coeffs)))
+// }
 
 #[cfg(test)]
 mod tests {
@@ -427,15 +430,19 @@ mod tests {
 
     #[test]
     fn test_parse_vector() {
-        let input = "Vec[1,2 ,3]";
+        let input = "Vec[1, 2 ,3]";
         let pair = MrMathParser::parse(Rule::VECTOR, input).unwrap().next().unwrap();
         let result = parse_vector(pair).unwrap();
         println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Vector(vec![
-            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("1".to_string()))),
-            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("2".to_string()))),
-            Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("3".to_string()))),
+            Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("1".to_string())))),
+            Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string())))),
+            Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("3".to_string())))),
         ]));
+        let input = "Vec[1,Vec[1] * Vec[1] ,3]";
+        let pair = MrMathParser::parse(Rule::VECTOR, input).unwrap().next().unwrap();
+        let result = parse_vector(pair).unwrap();
+        println!("{:#?}", result);
     }
 
     #[test]
@@ -446,12 +453,12 @@ mod tests {
         println!("{:#?}", result);
         assert_eq!(result, PrimaryExpr::Matrix(vec![
             vec![
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("1".to_string()))),
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("2".to_string()))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("1".to_string())))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("2".to_string())))),
             ],
             vec![
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("3".to_string()))),
-                Expr_short::PrimaryShort(PrimaryExpr_short::Integer(BigInt::from("4".to_string()))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("3".to_string())))),
+                Expr::Primary(Box::new(PrimaryExpr::Integer(BigInt::from("4".to_string())))),
             ],
         ]));
     }
@@ -502,5 +509,14 @@ mod tests {
         let result = parse_block(pair).unwrap();
         println!("{:#?}", result);
         // Add appropriate assertions based on the expected structure of the parsed block
+    }
+
+    #[test]
+    fn test_parse_boolean_expr() {
+        let input = "true & false and false or true == false";
+        let pair = MrMathParser::parse(Rule::EXPR, input).unwrap().next().unwrap();
+        let result = parse_expr(pair).unwrap();
+        println!("{:#?}", result);
+        // Add appropriate assertions based on the expected structure of the parsed expression
     }
 }

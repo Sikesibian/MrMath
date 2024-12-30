@@ -23,6 +23,18 @@ impl IntoVectorElement for Fraction {
     }
 }
 
+impl From<BigInt> for VectorElement {
+    fn from(x: BigInt) -> VectorElement {
+        VectorElement::BigInt(x)
+    }
+}
+
+impl From<Fraction> for VectorElement {
+    fn from(x: Fraction) -> VectorElement {
+        VectorElement::Fraction(x)
+    }
+}
+
 impl Neg for VectorElement {
     type Output = VectorElement;
 
@@ -89,6 +101,13 @@ impl VectorElement {
             VectorElement::Fraction(x) => x.to_string(),
         }
     }
+
+    fn abs(&self) -> VectorElement {
+        match self {
+            VectorElement::BigInt(x) => VectorElement::BigInt(x.clone().abs()),
+            VectorElement::Fraction(x) => VectorElement::Fraction(x.abs()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +130,17 @@ impl Vector {
             .map(|elem| elem.to_string())
             .collect::<Vec<_>>()
             .join(", "))
+    }
+
+    pub fn abs(&self) -> Vector {
+        let elements = self.elements.clone().into_iter()
+            .map(|elem| elem.abs())
+            .collect();
+        Vector { elements }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.elements.iter().all(|elem| elem.to_string() == "0")
     }
 }
 
@@ -278,6 +308,17 @@ impl Matrix {
             .map(|row| Vector { elements: row })
             .collect();
         Matrix { rows: transposed_rows }
+    }
+
+    pub fn abs(&self) -> Matrix {
+        let rows = self.rows.clone().into_iter()
+            .map(|row| row.abs())
+            .collect();
+        Matrix { rows }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.rows.iter().all(|row| row.is_zero())
     }
 }
 
